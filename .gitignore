@@ -1,0 +1,5 @@
+/target
+
+# device tree files, I use them for debugging
+*.dts
+*.dtb

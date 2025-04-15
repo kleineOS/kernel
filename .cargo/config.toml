@@ -1,0 +1,10 @@
+[target.'cfg(target_os = "none")']
+rustflags = ["-Clink-arg=-Tlinker.ld"]
+runner = "just runner"
+
+[build]
+target = ".cargo/riscv64-bare.json"
+
+[unstable]
+build-std-features = ["compiler-builtins-mem"]
+build-std = ["core", "compiler_builtins"]

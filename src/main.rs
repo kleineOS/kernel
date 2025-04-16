@@ -53,17 +53,17 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     log::debug!("HART#{hartid}");
 
     // safety: the fdt_ptr needs to be valid. this is "guaranteed" by OpenSBI
-    let fdt = unsafe { fdt::Fdt::from_ptr(fdt_ptr as *const u8) }.expect("could not parse fdt");
+    let _fdt = unsafe { fdt::Fdt::from_ptr(fdt_ptr as *const u8) }.expect("could not parse fdt");
 
-    let cpu_count = fdt.cpus().count();
-    log::info!("total {} harts", cpu_count);
+    // unsafe {
+    //     core::arch::asm!(
+    //         "li a0, 0xdeadbeef
+    //         unimp"
+    //     )
+    // };
 
-    unsafe {
-        core::arch::asm!(
-            "li a0, 0xdeadbeef
-            unimp"
-        )
-    };
+    #[cfg(test)]
+    test_main();
 
     kmain();
 }
@@ -80,13 +80,24 @@ fn kmain() -> ! {
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     riscv::interrupt::disable();
+
+    #[cfg(test)]
+    println!("[TEST FAILED]");
     println!("{}", info);
     loop {}
 }
 
 #[cfg(test)]
-pub fn test_runner(_: &[&dyn Fn()]) {
-    panic!("tests not implimented");
+pub fn test_runner(tests: &[&dyn Fn()]) -> ! {
+    println!("\n\n");
+    log::info!("Running tests...");
+
+    for (i, test) in tests.iter().enumerate() {
+        log::info!("running test #{i}");
+        test();
+    }
+
+    riscv::pauseloop();
 }
 
 // ========= ASSEMBLY IMPORTS =========

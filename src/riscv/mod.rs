@@ -1,8 +1,7 @@
 #![allow(unused)]
 
 //! # Wrappers for common RISC-V instructions
-//! This mostly wraps around the [::riscv] crate. These wrappers are designed to be easier to write
-//! and to be overall integrate nicely with my other stuff
+//! These mostly wrap around raw assembly
 
 mod frame;
 pub mod sbi;
@@ -37,24 +36,74 @@ pub fn pauseloop() -> ! {
 /// Provides a hint to the implementation that the current hart can be stalled until an interrupt might need servicing.
 /// The WFI instruction is just a hint, and a legal implementation is to implement WFI as a NOP.
 pub fn wfi() {
-    ::riscv::asm::wfi();
+    unsafe { asm!("wfi", options(nomem, nostack)) };
 }
 
 /// `TIME` instruction wrapper
 pub fn time() -> usize {
-    ::riscv::register::time::read()
+    unsafe {
+        let time: usize;
+        asm!("mv {}, time", out(reg) time, options(nomem, nostack));
+        time
+    }
 }
 
 pub mod interrupt {
-    use ::riscv::interrupt::cause as rv_cause;
-    pub use ::riscv::interrupt::{Exception, Interrupt, Trap};
-
     use super::*;
+
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+    #[repr(usize)]
+    pub enum Trap {
+        Interrupt(Interrupt),
+        Exception(Exception),
+    }
+
+    #[allow(clippy::enum_variant_names)]
+    #[repr(usize)]
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+    pub enum Interrupt {
+        SupervisorSoft = 1,
+        SupervisorTimer = 5,
+        SupervisorExternal = 9,
+    }
+
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+    #[repr(usize)]
+    pub enum Exception {
+        InstructionMisaligned = 0,
+        InstructionFault = 1,
+        IllegalInstruction = 2,
+        Breakpoint = 3,
+        LoadMisaligned = 4,
+        LoadFault = 5,
+        StoreMisaligned = 6,
+        StoreFault = 7,
+        UserEnvCall = 8,
+        SupervisorEnvCall = 9,
+        InstructionPageFault = 12,
+        LoadPageFault = 13,
+        StorePageFault = 15,
+    }
 
     /// Retrieves the cause of a trap in the current hart (supervisor mode).
     #[inline]
-    pub fn cause() -> Trap<Interrupt, Exception> {
-        rv_cause::<Interrupt, Exception>()
+    pub fn cause() -> Trap {
+        let scause = unsafe {
+            let scause: usize;
+            asm!("csrr {}, scause", out(reg) scause, options(nomem, nostack));
+            scause
+        };
+
+        let int = ((scause >> 63) & 1) == 1;
+        let cause = scause & ((1 << 63) - 1);
+
+        if int {
+            let interrupt = unsafe { core::mem::transmute::<usize, Interrupt>(cause) };
+            Trap::Interrupt(interrupt)
+        } else {
+            let exception = unsafe { core::mem::transmute::<usize, Exception>(cause) };
+            Trap::Exception(exception)
+        }
     }
 
     /// Enables all the interrupts in the current hart (supervisor mode).
@@ -68,7 +117,9 @@ pub mod interrupt {
     /// Disables all interrupts in the current hart (supervisor mode).
     #[inline]
     pub fn disable() {
-        ::riscv::interrupt::disable();
+        // TODO: I want to instead have some closure like syntax to disable interrupts for only a
+        // given function
+        unsafe { asm!("csrw sie 0", options(nomem, nostack)) };
     }
 }
 

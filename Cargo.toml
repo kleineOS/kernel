@@ -15,6 +15,7 @@ spin = "0.10.0"
 
 # right now, we only support RISC-V, but I am open to adding more
 [target.'cfg(target_arch = "riscv64")'.dependencies]
+# NOTE: STAGED TO BE REMOVED
 riscv = { version = "0.13.0", features = ["s-mode"] }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies.fdt]

@@ -1,10 +1,11 @@
 #![allow(unused)]
 
+//! (to be moved)
 //! A simple bitmap allocator
 
-use spin::Mutex;
+mod bitmap;
 
-const PAGE_SIZE: usize = 4096;
+use spin::Mutex;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MemStatus {
@@ -13,12 +14,12 @@ pub enum MemStatus {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct BitMap {
-    pub(crate) raw_bitmap: *mut [u8; PAGE_SIZE],
+pub struct BitMapO {
+    pub(crate) raw_bitmap: *mut [u8; crate::PAGE_SIZE],
     cursor: usize,
 }
 
-impl Iterator for BitMap {
+impl Iterator for BitMapO {
     type Item = MemStatus;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -49,19 +50,14 @@ impl Iterator for BitMap {
 pub struct BitMapAlloc {
     // this can store info on 4096*8 32768 pages
     // in total, this represents ~130M of memory
-    pub(crate) bitmap: BitMap,
+    pub(crate) bitmap: bitmap::BitMap,
 }
 
 impl BitMapAlloc {
     pub fn init() -> Mutex<Self> {
-        let cursor = 0;
-        let raw_bitmap = unsafe {
-            let raw = crate::HEAP_TOP as *mut [u8; PAGE_SIZE];
-            *raw = core::mem::zeroed();
-            raw
-        };
+        let addr = unsafe { crate::HEAP_TOP };
+        let bitmap = bitmap::BitMap::zeroed(addr);
 
-        let bitmap = BitMap { raw_bitmap, cursor };
         Mutex::new(Self { bitmap })
     }
 
@@ -69,66 +65,13 @@ impl BitMapAlloc {
     pub fn alloc(&mut self, num_pages: usize) -> usize {
         assert!(num_pages > 0, "Cannot allocate zero pages");
 
-        let mut contigous_count = 0;
-        let mut start_index = 0;
-        let mut loc = None;
-
-        // Reset bitmap cursor for fresh search
-        self.bitmap.cursor = 0;
-
-        for (index, state) in self.bitmap.enumerate() {
-            match state {
-                MemStatus::Free => {
-                    if contigous_count == 0 {
-                        start_index = index;
-                    }
-                    contigous_count += 1;
-
-                    if contigous_count >= num_pages {
-                        loc = Some(start_index);
-                        break;
-                    }
-                }
-                MemStatus::Taken => {
-                    contigous_count = 0;
-                }
-            }
-        }
-
-        let offset_multiplier = loc.expect("out of space on the bitmap") + 1;
-
-        // Mark all allocated pages as taken
-        for i in 0..num_pages {
-            let page_index = offset_multiplier + i;
-            let index = page_index / 8;
-            let offset = page_index % 8;
-
-            unsafe {
-                let curr = (*self.bitmap.raw_bitmap)[index];
-                (*self.bitmap.raw_bitmap)[index] = curr | (1 << offset);
-            }
-        }
-
-        let heap_top = unsafe { crate::HEAP_TOP };
-        heap_top + (offset_multiplier * PAGE_SIZE)
+        todo!()
     }
 
     pub fn free(&mut self, addr: usize, num_pages: usize) {
         assert!(num_pages > 0, "Cannot free zero pages");
 
-        let top = unsafe { crate::HEAP_TOP };
-        let offset_multiplier = (addr - top) / PAGE_SIZE;
-
-        for i in 0..num_pages {
-            let page_index = offset_multiplier + i;
-            let index = page_index / 8;
-            let offset = page_index % 8;
-
-            unsafe {
-                let curr = (*self.bitmap.raw_bitmap)[index];
-                (*self.bitmap.raw_bitmap)[index] = curr & !(1 << offset);
-            }
-        }
+        todo!()
     }
 }
 

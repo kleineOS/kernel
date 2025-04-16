@@ -22,7 +22,6 @@ unsafe extern "C" {
 }
 
 pub const INTERVAL: usize = 8000000;
-pub const UART0: usize = 0x10000000;
 
 fn is_main_hart() -> bool {
     // false if the global init has not yet been done
@@ -65,12 +64,6 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
             unimp"
         )
     };
-
-    let table = alloc::init();
-
-    for _ in 0..4095 {
-        let _ptr = alloc::alloc1(table);
-    }
 
     kmain();
 }

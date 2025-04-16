@@ -43,7 +43,7 @@ pub fn wfi() {
 pub fn time() -> usize {
     unsafe {
         let time: usize;
-        asm!("mv {}, time", out(reg) time, options(nomem, nostack));
+        asm!("csrr {}, time", out(reg) time, options(nomem, nostack));
         time
     }
 }
@@ -119,7 +119,7 @@ pub mod interrupt {
     pub fn disable() {
         // TODO: I want to instead have some closure like syntax to disable interrupts for only a
         // given function
-        unsafe { asm!("csrw sie 0", options(nomem, nostack)) };
+        unsafe { asm!("csrw sie, {}", in(reg) 0, options(nomem, nostack)) };
     }
 }
 

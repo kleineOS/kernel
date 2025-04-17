@@ -4,11 +4,11 @@
 /// operations to store more data than a simple array of bools. It cannot represent any more data,
 /// and it cannot grow. It also cannot be created twice
 #[derive(Debug)]
-pub struct BitMap<const N: usize> {
-    inner: *mut [u8; N],
+pub struct BitMap<const SIZE: usize> {
+    inner: *mut [u8; SIZE],
 }
 
-impl<const N: usize> BitMap<N> {
+impl<const SIZE: usize> BitMap<SIZE> {
     pub fn zeroed(addr: usize) -> Self {
         // commented out to make this data structure more generic
         // static TOGGLE: AtomicBool = AtomicBool::new(false);
@@ -16,9 +16,10 @@ impl<const N: usize> BitMap<N> {
         //     .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         //     .expect("multiple invocations of BitMap::zero is not supported");
 
-        let inner = addr as *mut [u8; N];
+        let inner = addr as *mut [u8; SIZE];
 
-        unsafe { core::ptr::write_bytes(inner, 0, N) };
+        // safety: this is safe as long as the address of inner is valid
+        unsafe { core::ptr::write_bytes(inner, 0, SIZE) };
 
         Self { inner }
     }
@@ -27,6 +28,7 @@ impl<const N: usize> BitMap<N> {
         let index = pos / 8;
         let offset = pos % 8;
 
+        // safety: this is safe as long as self.inner is valid
         let value = unsafe { (*self.inner)[index] >> offset & 1 };
         assert!(value == 1 || value == 0);
 
@@ -35,11 +37,12 @@ impl<const N: usize> BitMap<N> {
 
     // we dont "need" mut here, but we *are* mutating so I am going to be explicit
     pub fn put(&mut self, pos: usize, value: bool) {
-        assert!(pos < N * size_of::<u8>());
+        assert!(pos < SIZE * size_of::<u8>());
 
         let index = pos / 8;
         let offset = pos % 8;
 
+        // safety: this is safe as long as self.inner is valid
         unsafe {
             if value {
                 (*self.inner)[index] |= 1 << offset;
@@ -54,6 +57,7 @@ impl<const N: usize> BitMap<N> {
     pub fn display_chunk(&self, pos: usize) {
         let index = pos / 8;
 
+        // safety: this is safe as long as self.inner is valid
         let value = unsafe { (*self.inner)[index] };
         let value = value.reverse_bits();
 

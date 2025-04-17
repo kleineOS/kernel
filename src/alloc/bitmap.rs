@@ -35,7 +35,6 @@ impl<const SIZE: usize> BitMap<SIZE> {
         value == 1
     }
 
-    // we dont "need" mut here, but we *are* mutating so I am going to be explicit
     pub fn put(&mut self, pos: usize, value: bool) {
         assert!(pos < SIZE * size_of::<u8>());
 

@@ -5,8 +5,6 @@
 
 mod bitmap;
 
-use core::{alloc::GlobalAlloc, num::NonZeroU8};
-
 use spin::Mutex;
 
 use crate::{HEAP_TOP, PAGE_SIZE};

@@ -56,6 +56,9 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     // safety: the fdt_ptr needs to be valid. this is "guaranteed" by OpenSBI
     let _fdt = unsafe { fdt::Fdt::from_ptr(fdt_ptr as *const u8) }.expect("could not parse fdt");
 
+    let balloc = alloc::BitMapAlloc::init();
+    vmem::init(balloc);
+
     // unsafe {
     //     core::arch::asm!(
     //         "li a0, 0xdeadbeef
@@ -73,6 +76,8 @@ fn kmain() -> ! {
     // safety: cannot be used in critical section
     unsafe { riscv::interrupt::enable_all() };
     sbi::time::set_timer(riscv::time() + INTERVAL);
+
+    vmem::inithart();
 
     log::info!("Entering loop...");
     riscv::pauseloop();

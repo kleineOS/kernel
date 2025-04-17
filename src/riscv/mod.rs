@@ -48,6 +48,28 @@ pub fn time() -> usize {
     }
 }
 
+// flush the TLB
+pub fn sfence_vma() {
+    // zero zero means all tlb entries
+    unsafe { asm!("sfence.vma zero, zero", options(nomem, nostack)) };
+}
+
+pub mod satp {
+    use super::*;
+
+    pub fn write(value: usize) {
+        unsafe { asm!("csrw satp, {}", in(reg) value, options(nomem, nostack)) };
+    }
+
+    pub fn read() -> usize {
+        unsafe {
+            let satp: usize;
+            asm!("csrr {}, satp", out(reg) satp, options(nomem, nostack));
+            satp
+        }
+    }
+}
+
 pub mod interrupt {
     use super::*;
 

@@ -1,16 +1,14 @@
 // use core::sync::atomic::{AtomicBool, Ordering};
 
-use crate::PAGE_SIZE;
-
 /// A simple bitmal data structure that can store up to N * 8 bits of data. It uses smart bitwise
 /// operations to store more data than a simple array of bools. It cannot represent any more data,
 /// and it cannot grow. It also cannot be created twice
 #[derive(Debug)]
-pub struct BitMap<const N: usize = PAGE_SIZE> {
+pub struct BitMap<const N: usize> {
     inner: *mut [u8; N],
 }
 
-impl BitMap {
+impl<const N: usize> BitMap<N> {
     pub fn zeroed(addr: usize) -> Self {
         // commented out to make this data structure more generic
         // static TOGGLE: AtomicBool = AtomicBool::new(false);
@@ -18,9 +16,9 @@ impl BitMap {
         //     .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         //     .expect("multiple invocations of BitMap::zero is not supported");
 
-        let inner = addr as *mut [u8; PAGE_SIZE];
+        let inner = addr as *mut [u8; N];
 
-        unsafe { core::ptr::write_bytes(inner, 0, PAGE_SIZE) };
+        unsafe { core::ptr::write_bytes(inner, 0, N) };
 
         Self { inner }
     }
@@ -37,7 +35,7 @@ impl BitMap {
 
     // we dont "need" mut here, but we *are* mutating so I am going to be explicit
     pub fn put(&mut self, pos: usize, value: bool) {
-        assert!(pos < PAGE_SIZE * size_of::<u8>());
+        assert!(pos < N * size_of::<u8>());
 
         let index = pos / 8;
         let offset = pos % 8;
@@ -66,23 +64,30 @@ impl BitMap {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn addr() -> usize {
-        unsafe { crate::HEAP_TOP }
-    }
+    use crate::PAGE_SIZE;
 
     #[test_case]
     fn test_zero() {
-        let bm = BitMap::zeroed(addr());
+        let addr = unsafe { crate::HEAP_TOP };
+        let bm = BitMap::<PAGE_SIZE>::zeroed(addr);
 
         for i in 0..PAGE_SIZE {
+            unsafe { assert_eq!((*bm.inner)[i], 0, "index#{i}") };
+        }
+
+        // what if we want a different quantity?
+        const N: usize = 1234;
+        let bm = BitMap::<N>::zeroed(addr);
+
+        for i in 0..N {
             unsafe { assert_eq!((*bm.inner)[i], 0, "index#{i}") };
         }
     }
 
     #[test_case]
     fn test_get_put() {
-        let mut bm = BitMap::zeroed(addr());
+        let addr = unsafe { crate::HEAP_TOP };
+        let mut bm = BitMap::<PAGE_SIZE>::zeroed(addr);
 
         // initial state should be all 0s (aka false)
         assert!(!bm.get(0));

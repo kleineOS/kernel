@@ -90,14 +90,19 @@ fn panic(info: &PanicInfo) -> ! {
 
 #[cfg(test)]
 pub fn test_runner(tests: &[&dyn Fn()]) -> ! {
+    use sbi::srst::*;
+
     println!("\n\n");
-    log::info!("Running tests...");
+    println!("Running tests...");
 
     for (i, test) in tests.iter().enumerate() {
-        log::info!("running test #{i}");
+        println!("\nrunning test #{i}");
         test();
+        println!("test #{i} [OK]");
     }
 
+    system_reset(ResetType::Shutdown);
+    // we run a pauseloop until OpenSBI processes our request to shutdown
     riscv::pauseloop();
 }
 

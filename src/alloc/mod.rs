@@ -5,57 +5,20 @@
 
 mod bitmap;
 
+use core::{alloc::GlobalAlloc, num::NonZeroU8};
+
 use spin::Mutex;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum MemStatus {
-    Free,
-    Taken,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct BitMapO {
-    pub(crate) raw_bitmap: *mut [u8; crate::PAGE_SIZE],
-    cursor: usize,
-}
-
-impl Iterator for BitMapO {
-    type Item = MemStatus;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let bmlen = (unsafe { *self.raw_bitmap }).len();
-        // the bitmap being full results in a issues anyways, no point returning None
-        assert!(self.cursor < bmlen * 8, "the bitmap is full");
-
-        let index = self.cursor / 8;
-        let offset = self.cursor % 8;
-
-        let offset_val = unsafe { (*self.raw_bitmap)[index] >> offset & 1 };
-        assert!(
-            offset_val == 0 || offset_val == 1,
-            "heap is corrupted. found value {offset_val} when expected 0 or 1",
-        );
-
-        self.cursor += 1;
-
-        if offset_val == 1 {
-            Some(MemStatus::Taken)
-        } else {
-            Some(MemStatus::Free)
-        }
-    }
-}
+use crate::{HEAP_TOP, PAGE_SIZE};
 
 #[derive(Debug)]
 pub struct BitMapAlloc {
-    // this can store info on 4096*8 32768 pages
-    // in total, this represents ~130M of memory
-    pub(crate) bitmap: bitmap::BitMap,
+    pub(crate) bitmap: bitmap::BitMap<PAGE_SIZE>,
 }
 
 impl BitMapAlloc {
     pub fn init() -> Mutex<Self> {
-        let addr = unsafe { crate::HEAP_TOP };
+        let addr = unsafe { HEAP_TOP };
         let bitmap = bitmap::BitMap::zeroed(addr);
 
         Mutex::new(Self { bitmap })
@@ -64,14 +27,58 @@ impl BitMapAlloc {
     /// allocate the given number of contigous pages
     pub fn alloc(&mut self, num_pages: usize) -> usize {
         assert!(num_pages > 0, "Cannot allocate zero pages");
+        let base_addr = unsafe { HEAP_TOP } + PAGE_SIZE;
 
-        todo!()
+        let mut start_idx = None;
+        let mut found = 0;
+
+        // it will panic if we go over the limit, and a panic is good for such a scenario
+        for i in 0.. {
+            let is_free = !self.bitmap.get(i);
+
+            match (is_free, start_idx) {
+                // not free, but we had a chain going
+                (false, Some(_)) => {
+                    start_idx = None;
+                    found = 0;
+                }
+                // free, and we have not found anything yet
+                (true, None) => {
+                    start_idx = Some(i);
+                    found += 1;
+                }
+                // free, and we are already in a chain
+                (true, Some(i)) => found += 1,
+                // not free, and we have not found anything yet
+                (false, None) => (),
+            };
+
+            if found == num_pages {
+                break;
+            }
+        }
+
+        // the expect will probably not trigger, as we panic before that
+        let start_idx = start_idx.expect("no free pages found");
+
+        for i in start_idx..(start_idx + num_pages) {
+            // we claim the pages over here by setting them to true
+            self.bitmap.put(i, true);
+        }
+
+        base_addr + (PAGE_SIZE * start_idx)
     }
 
     pub fn free(&mut self, addr: usize, num_pages: usize) {
         assert!(num_pages > 0, "Cannot free zero pages");
+        let base_addr = unsafe { HEAP_TOP } + PAGE_SIZE;
 
-        todo!()
+        let idx = (addr - base_addr) / PAGE_SIZE;
+
+        for i in idx..(idx + num_pages) {
+            assert!(self.bitmap.get(i), "trying to free an un-allocated page");
+            self.bitmap.put(i, false);
+        }
     }
 }
 
@@ -84,19 +91,22 @@ mod tests {
         let top = unsafe { crate::HEAP_TOP };
         let balloc = BitMapAlloc::init();
 
-        let location = balloc.lock().alloc(4);
-        assert_eq!(location, top + 0x1000);
+        let alloc0 = balloc.lock().alloc(4);
+        assert_eq!(alloc0, top + 0x1000);
 
-        let location = balloc.lock().alloc(6);
-        assert_eq!(location, top + 0x6000);
+        let alloc1 = balloc.lock().alloc(6);
+        assert_eq!(alloc1, top + 0x5000);
+
+        let alloc2 = balloc.lock().alloc(1);
+        assert_eq!(alloc2, top + 0xb000);
 
         // we try freeing, so we can allocate again on the same spot
-        balloc.lock().free(location, 6);
+        balloc.lock().free(alloc1, 6);
 
         let location = balloc.lock().alloc(4);
-        assert_eq!(location, top + 0x6000);
+        assert_eq!(location, top + 0x5000);
 
         let location = balloc.lock().alloc(6);
-        assert_eq!(location, top + 0xb000);
+        assert_eq!(location, top + 0xc000);
     }
 }

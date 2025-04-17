@@ -87,3 +87,30 @@ pub mod dbcn {
         ecall(args, FID_WRITE, EID);
     }
 }
+
+pub mod srst {
+    //! System Reset Extension (EID #0x53525354 "SRST")
+
+    use super::*;
+    const EID: usize = 0x53525354;
+    const FID_SYSTEM_RESET: usize = 0;
+
+    #[repr(usize)]
+    pub enum ResetType {
+        Shutdown = 0,
+        ColdReboot = 1,
+        WarnReboot = 2,
+    }
+
+    pub fn system_reset(reset_type: ResetType) {
+        let reason = 0x00000001; // no reason
+
+        let args = Args {
+            a0: reset_type as usize,
+            a1: reason,
+            ..Default::default()
+        };
+
+        ecall(args, FID_SYSTEM_RESET, EID);
+    }
+}

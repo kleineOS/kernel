@@ -12,6 +12,7 @@ MACHINE := "virt"
 @default: run-dbg
 
 @run-dbg *FLAGS:
+    cargo build
     just runner target/riscv64-bare/debug/kernel {{ FLAGS }}
 
 # list all the options

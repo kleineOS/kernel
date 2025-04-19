@@ -57,7 +57,7 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     let _fdt = unsafe { fdt::Fdt::from_ptr(fdt_ptr as *const u8) }.expect("could not parse fdt");
 
     let balloc = alloc::BitMapAlloc::init();
-    vmem::init(balloc);
+    vmem::init(&mut balloc.lock());
 
     // unsafe {
     //     core::arch::asm!(

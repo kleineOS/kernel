@@ -25,6 +25,7 @@ fn handle_interrupt(interrupt: Interrupt) {
 }
 
 fn handle_exception(exception: Exception, frame: &riscv::Frame) {
+    log::error!("TRAP: SEPC: {:#x}", ::riscv::register::sepc::read());
     log::error!("TRAP: EXCEPTION: {:?}", exception);
     frame.pretty_print();
 

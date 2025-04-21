@@ -75,7 +75,7 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
 fn kmain() -> ! {
     // safety: cannot be used in critical section
     unsafe { riscv::interrupt::enable_all() };
-    sbi::time::set_timer(riscv::time() + INTERVAL);
+    // sbi::time::set_timer(riscv::time() + INTERVAL);
 
     vmem::inithart();
 

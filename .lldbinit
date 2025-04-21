@@ -1,0 +1,5 @@
+target create "target/riscv64-bare/debug/kernel"
+gdb-remote localhost:1234
+
+settings set target.detach-on-error true
+settings set interpreter.prompt-on-quit false

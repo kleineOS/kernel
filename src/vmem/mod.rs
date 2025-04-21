@@ -1,14 +1,9 @@
-#![allow(unused)]
-
 mod mapper;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use packed_struct::derive::PackedStruct;
-use spin::Mutex;
-
 use crate::{PAGE_SIZE, alloc::BitMapAlloc, riscv};
-use mapper::*;
+use mapper::{PageTableEntry, *};
 
 const UNINITALISED: usize = 0xdeadbabe;
 const MODE_SV39: usize = 8usize << 60;
@@ -20,30 +15,26 @@ pub fn init(balloc: &mut BitMapAlloc) {
         panic!("vmem::init called twice");
     }
 
-    let page_table = balloc.alloc(1);
-    unsafe { core::ptr::write_bytes(page_table as *mut u8, 0, crate::PAGE_SIZE) };
+    let page_table_addr = balloc.alloc(1);
+    unsafe { core::ptr::write_bytes(page_table_addr as *mut u8, 0, PAGE_SIZE) };
 
-    map(
-        balloc,
-        page_table,
-        0x80200000,
-        0x80200000,
-        Perms::all(),
-        0x4000,
-    );
+    PAGE_TABLE.store(page_table_addr, Ordering::Relaxed);
 
-    // map(
-    //     &balloc,
-    //     page_table,
-    //     0x80200000,
-    //     0x80200000,
-    //     Perms::all(),
-    //     4096 * 40,
-    // );
+    let page_table = unsafe { &mut *(page_table_addr as *mut [PageTableEntry; 512]) };
 
-    PAGE_TABLE.store(page_table, Ordering::Relaxed);
+    for i in 0..10000 {
+        let offset = i * 4096;
+        map(
+            balloc,
+            page_table,
+            0x8000_0000 + offset,
+            0x8000_0000 + offset,
+            Perms::all(),
+        );
+    }
 }
 
+#[unsafe(no_mangle)]
 pub fn inithart() {
     if PAGE_TABLE.load(Ordering::Relaxed) == UNINITALISED {
         panic!("call vmem::inithart called before calling vmem::init");
@@ -54,10 +45,8 @@ pub fn inithart() {
     let kptbl = PAGE_TABLE.load(Ordering::Relaxed);
 
     let satp_entry = MODE_SV39 | (kptbl >> 12);
+    log::info!("PRE: satp set to value: {:#x}", satp_entry);
 
     riscv::satp::write(satp_entry);
-
-    log::info!("satp entry: {:#x}", satp_entry);
-
     riscv::sfence_vma();
 }

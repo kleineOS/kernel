@@ -36,7 +36,7 @@ impl<const SIZE: usize> BitMap<SIZE> {
     }
 
     pub fn put(&mut self, pos: usize, value: bool) {
-        assert!(pos < SIZE * size_of::<u8>());
+        assert!(pos < SIZE * size_of::<u8>(), "bitmap is full");
 
         let index = pos / 8;
         let offset = pos % 8;

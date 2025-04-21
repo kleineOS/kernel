@@ -133,7 +133,7 @@ pub mod interrupt {
     /// Do not call this function inside a critical section.
     #[inline]
     pub unsafe fn enable_all() {
-        unsafe { asm!("csrw sie, {}", in(reg) 1 << 5 | 1 << 9, options(nomem, nostack)) };
+        unsafe { asm!("csrw sie, {}", in(reg) 1 << 5 | 1 << 11 | 1 << 9, options(nomem, nostack)) };
     }
 
     /// Disables all interrupts in the current hart (supervisor mode).

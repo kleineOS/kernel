@@ -1,72 +1,82 @@
+#![allow(unused)]
+
 use bitflags::bitflags;
 
 use crate::{PAGE_SIZE, alloc::BitMapAlloc};
 
-const FLAG_VALID: usize = 1 << 0;
-const FLAG_READ: usize = 1 << 1;
-const FLAG_WRITE: usize = 1 << 2;
-const FLAG_EXEC: usize = 1 << 3;
-const FLAG_USER: usize = 1 << 4;
-
-pub fn walk(balloc: &mut BitMapAlloc, base: usize, vaddr: usize, paddr: usize) -> &mut usize {
-    let mut pagetable = unsafe { &mut *(base as *mut [usize; 512]) };
-
-    for level in [2, 1] {
-        let index = vaddr >> (12 + (9 * level)) & 0x1FF;
-        let pte = &mut pagetable[index];
-
-        if *pte & FLAG_VALID != 0 {
-            log::info!("FIRST BRANCH");
-            let pte2pa = (*pte >> 10) << 12;
-            pagetable = unsafe { &mut *(pte2pa as *mut [usize; 512]) };
-        } else {
-            log::info!("SECOND BRANCH");
-            let new_page = balloc.alloc(1);
-            unsafe { core::ptr::write_bytes(new_page as *mut u8, 0, PAGE_SIZE) };
-            pagetable = unsafe { &mut *(new_page as *mut [usize; 512]) };
-
-            let paddr_for_pte = paddr >> 12 << 10;
-            *pte = paddr_for_pte | FLAG_VALID;
-        }
-    }
-
-    let index = vaddr >> 12 & 0x1FF;
-    &mut pagetable[index]
-}
-
 pub fn map(
     balloc: &mut BitMapAlloc,
-    base: usize,
+    root: &mut [PageTableEntry; 512],
     vaddr: usize,
     paddr: usize,
     perms: Perms,
-    size: usize,
 ) {
-    assert!(vaddr % PAGE_SIZE == 0);
-    assert!(size % PAGE_SIZE == 0);
-    assert!(size > 0);
+    let level = 0;
 
-    let mut va = vaddr;
-    let last = vaddr + size - PAGE_SIZE;
-    let mut pa = paddr;
+    let vpn = [
+        (vaddr >> 12) & VPN_MASK,
+        (vaddr >> 21) & VPN_MASK,
+        (vaddr >> 30) & VPN_MASK,
+    ];
 
-    loop {
-        let pte = walk(balloc, base, va, pa);
+    let ppn = [
+        (paddr >> 12) & PPN_MASK,
+        (paddr >> 21) & PPN_MASK,
+        (paddr >> 30) & PPN_MASK_BIG,
+    ];
 
-        if *pte & FLAG_VALID != 0 {
-            panic!("remap");
+    let mut v = &mut root[vpn[2]];
+
+    for i in (level..2).rev() {
+        if !v.is_valid() {
+            let page = balloc.alloc(1);
+            unsafe { core::ptr::write_bytes(page as *mut u8, 0, 4096) };
+            v.set_inner(page >> 2 | FLAG_VALID);
         }
 
-        let paddr_for_pte = paddr >> 12 << 10;
-        *pte = paddr_for_pte | perms.bits() | FLAG_VALID;
+        let entry = ((v.get_inner() & !0x3ff) << 2) as *mut PageTableEntry;
+        v = unsafe { entry.add(vpn[i]).as_mut().unwrap() };
+    }
 
-        assert!(va <= last);
-        if va == last {
-            break;
-        }
+    let entry = (ppn[2] << 28) | (ppn[1] << 19) | (ppn[0] << 10) | perms.bits() | FLAG_VALID;
 
-        va += PAGE_SIZE;
-        pa += PAGE_SIZE;
+    v.set_inner(entry);
+}
+
+#[repr(C)]
+pub struct PageTableEntry {
+    inner: usize,
+}
+
+impl PageTableEntry {
+    pub fn is_leaf(&self) -> bool {
+        self.inner & 0xe != 0
+    }
+
+    pub fn set_inner(&mut self, value: usize) {
+        self.inner = value
+    }
+
+    pub fn get_inner(&self) -> usize {
+        self.inner
+    }
+
+    pub fn get_perms(&self) -> Perms {
+        Perms::from_bits_truncate(self.inner)
+    }
+
+    pub fn set_perms(&mut self, perms: Perms) {
+        self.inner &= !Perms::all().bits();
+        self.inner |= perms.bits();
+    }
+
+    pub fn is_valid(&self) -> bool {
+        (FLAG_VALID & self.inner) != 0
+    }
+
+    pub fn set_valid(&mut self, value: bool) {
+        self.inner &= !FLAG_VALID;
+        self.inner |= if value { FLAG_VALID } else { 0 };
     }
 }
 
@@ -80,3 +90,13 @@ bitflags! {
         const USER = FLAG_USER;
     }
 }
+
+const PPN_MASK_BIG: usize = 0x3ff_ffff; // 26 bits
+const PPN_MASK: usize = 0x1ff; // 9 bits
+const VPN_MASK: usize = 0x1ff; // 9 bits
+
+const FLAG_VALID: usize = 1 << 0;
+const FLAG_READ: usize = 1 << 1;
+const FLAG_WRITE: usize = 1 << 2;
+const FLAG_EXEC: usize = 1 << 3;
+const FLAG_USER: usize = 1 << 4;

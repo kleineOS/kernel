@@ -1,8 +1,6 @@
-#![allow(unused)]
-
 use bitflags::bitflags;
 
-use crate::{PAGE_SIZE, alloc::BitMapAlloc};
+use crate::alloc::BitMapAlloc;
 
 pub fn map(
     balloc: &mut BitMapAlloc,
@@ -31,16 +29,17 @@ pub fn map(
         if !v.is_valid() {
             let page = balloc.alloc(1);
             unsafe { core::ptr::write_bytes(page as *mut u8, 0, 4096) };
-            v.set_inner(page >> 2 | FLAG_VALID);
+            v.set_inner(page >> 2);
+            v.set_valid(true);
         }
 
         let entry = ((v.get_inner() & !0x3ff) << 2) as *mut PageTableEntry;
         v = unsafe { entry.add(vpn[i]).as_mut().unwrap() };
     }
 
-    let entry = (ppn[2] << 28) | (ppn[1] << 19) | (ppn[0] << 10) | perms.bits() | FLAG_VALID;
-
+    let entry = (ppn[2] << 28) | (ppn[1] << 19) | (ppn[0] << 10) | perms.bits();
     v.set_inner(entry);
+    v.set_valid(true);
 }
 
 #[repr(C)]
@@ -49,25 +48,12 @@ pub struct PageTableEntry {
 }
 
 impl PageTableEntry {
-    pub fn is_leaf(&self) -> bool {
-        self.inner & 0xe != 0
-    }
-
     pub fn set_inner(&mut self, value: usize) {
         self.inner = value
     }
 
     pub fn get_inner(&self) -> usize {
         self.inner
-    }
-
-    pub fn get_perms(&self) -> Perms {
-        Perms::from_bits_truncate(self.inner)
-    }
-
-    pub fn set_perms(&mut self, perms: Perms) {
-        self.inner &= !Perms::all().bits();
-        self.inner |= perms.bits();
     }
 
     pub fn is_valid(&self) -> bool {

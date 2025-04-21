@@ -59,13 +59,6 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     let balloc = alloc::BitMapAlloc::init();
     vmem::init(&mut balloc.lock());
 
-    // unsafe {
-    //     core::arch::asm!(
-    //         "li a0, 0xdeadbeef
-    //         unimp"
-    //     )
-    // };
-
     #[cfg(test)]
     test_main();
 
@@ -75,7 +68,7 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
 fn kmain() -> ! {
     // safety: cannot be used in critical section
     unsafe { riscv::interrupt::enable_all() };
-    // sbi::time::set_timer(riscv::time() + INTERVAL);
+    sbi::time::set_timer(riscv::time() + INTERVAL);
 
     vmem::inithart();
 

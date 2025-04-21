@@ -17,6 +17,7 @@ pub fn init(balloc: &mut BitMapAlloc) {
 
     let page_table_addr = balloc.alloc(1);
     unsafe { core::ptr::write_bytes(page_table_addr as *mut u8, 0, PAGE_SIZE) };
+    log::info!("page table root at: {:#x}", page_table_addr);
 
     PAGE_TABLE.store(page_table_addr, Ordering::Relaxed);
 
@@ -36,17 +37,14 @@ pub fn init(balloc: &mut BitMapAlloc) {
 
 #[unsafe(no_mangle)]
 pub fn inithart() {
-    if PAGE_TABLE.load(Ordering::Relaxed) == UNINITALISED {
-        panic!("call vmem::inithart called before calling vmem::init");
-    }
-
-    riscv::sfence_vma();
-
     let kptbl = PAGE_TABLE.load(Ordering::Relaxed);
+    assert_ne!(kptbl, UNINITALISED);
 
     let satp_entry = MODE_SV39 | (kptbl >> 12);
-    log::info!("PRE: satp set to value: {:#x}", satp_entry);
 
+    riscv::sfence_vma();
     riscv::satp::write(satp_entry);
     riscv::sfence_vma();
+
+    log::info!("PRE: satp set to value: {:#x}", satp_entry);
 }

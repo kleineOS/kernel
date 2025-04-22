@@ -1,88 +1,83 @@
+#![allow(unused)]
+
 use bitflags::bitflags;
 
 use crate::alloc::BitMapAlloc;
 
+fn walk(balloc: &mut BitMapAlloc, root: *mut [usize; 512], vaddr: usize) -> *mut usize {
+    let mut pagetable = root;
+
+    for level in [2, 1] {
+        let pte = unsafe { &mut (*pagetable)[px(level, vaddr)] };
+
+        if *pte & PTE_V != 0 {
+            // PTE is valid, get the next level page table
+            pagetable = unsafe { (pte2pa(*pte) as *mut [usize; 512]) };
+        } else {
+            // PTE is not valid, allocate a new page table
+            let new_page = balloc.alloc(1) as *mut [usize; 512];
+
+            // Zero out the new page table
+            unsafe {
+                (*new_page).fill(0);
+            }
+
+            // Set the PTE to point to the new page table
+            *pte = pa2pte(new_page as usize) | PTE_V;
+
+            pagetable = new_page;
+        }
+    }
+
+    unsafe { &mut (*pagetable)[px(0, vaddr)] }
+}
+
 pub fn map(
     balloc: &mut BitMapAlloc,
-    root: &mut [PageTableEntry; 512],
+    root: *mut [usize; 512],
     vaddr: usize,
     paddr: usize,
     perms: Perms,
+    pages: usize,
 ) {
-    let level = 0;
+    for i in 0..pages {
+        let offset = 4096 * i;
+        let va = vaddr + offset;
+        let pa = paddr + offset;
 
-    let vpn = [
-        (vaddr >> 12) & VPN_MASK,
-        (vaddr >> 21) & VPN_MASK,
-        (vaddr >> 30) & VPN_MASK,
-    ];
+        let pte = walk(balloc, root, va);
 
-    let ppn = [
-        (paddr >> 12) & PPN_MASK,
-        (paddr >> 21) & PPN_MASK,
-        (paddr >> 30) & PPN_MASK_BIG,
-    ];
+        unsafe {
+            if *pte & PTE_V != 0 {
+                panic!("idfk man, just panic");
+            }
 
-    let mut v = &mut root[vpn[2]];
-
-    for i in (level..2).rev() {
-        if !v.is_valid() {
-            let page = balloc.alloc(1);
-            unsafe { core::ptr::write_bytes(page as *mut u8, 0, 4096) };
-            v.set_inner(page >> 2);
-            v.set_valid(true);
+            *pte = pa2pte(pa) | perms.bits() | PTE_V;
         }
-
-        let entry = ((v.get_inner() & !0x3ff) << 2) as *mut PageTableEntry;
-        v = unsafe { entry.add(vpn[i]).as_mut().unwrap() };
-    }
-
-    let entry = (ppn[2] << 28) | (ppn[1] << 19) | (ppn[0] << 10) | perms.bits();
-    v.set_inner(entry);
-    v.set_valid(true);
-}
-
-#[repr(C)]
-pub struct PageTableEntry {
-    inner: usize,
-}
-
-impl PageTableEntry {
-    pub fn set_inner(&mut self, value: usize) {
-        self.inner = value
-    }
-
-    pub fn get_inner(&self) -> usize {
-        self.inner
-    }
-
-    pub fn is_valid(&self) -> bool {
-        (FLAG_VALID & self.inner) != 0
-    }
-
-    pub fn set_valid(&mut self, value: bool) {
-        self.inner &= !FLAG_VALID;
-        self.inner |= if value { FLAG_VALID } else { 0 };
     }
 }
 
 bitflags! {
-    #[derive(Debug, Clone, Copy)]
     pub struct Perms: usize {
-        const READ = FLAG_READ;
-        // WRITE cannot be set without READ
-        const READ_WRITE = FLAG_WRITE | FLAG_READ;
-        const EXEC = FLAG_EXEC;
-        const USER = FLAG_USER;
+        const READ = 1 << 1;
+        const READ_WRITE = 1 << 1 | 1 << 2;
+        const EXEC = 1 << 3;
     }
 }
 
-const PPN_MASK_BIG: usize = 0x3ff_ffff; // 26 bits
-const PPN_MASK: usize = 0x1ff; // 9 bits
-const VPN_MASK: usize = 0x1ff; // 9 bits
+const PTE_V: usize = 1 << 0;
 
-const FLAG_VALID: usize = 1 << 0;
-const FLAG_READ: usize = 1 << 1;
-const FLAG_WRITE: usize = 1 << 2;
-const FLAG_EXEC: usize = 1 << 3;
-const FLAG_USER: usize = 1 << 4;
+#[inline]
+fn px(level: usize, va: usize) -> usize {
+    (va >> (12 + (9 * level))) & 0x1FF
+}
+
+#[inline]
+fn pte2pa(pte: usize) -> usize {
+    (pte >> 10) << 12
+}
+
+#[inline]
+fn pa2pte(pa: usize) -> usize {
+    (pa >> 12) << 10
+}

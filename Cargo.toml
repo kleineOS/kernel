@@ -4,9 +4,6 @@ version = "0.0.1"
 edition = "2024"
 license = "Apache-2.0"
 
-[profile.dev]
-opt-level = 1
-
 # architecture independent dependencies
 [dependencies]
 bitflags = "2.9.0"

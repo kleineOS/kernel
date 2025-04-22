@@ -3,7 +3,7 @@ mod mapper;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::{PAGE_SIZE, alloc::BitMapAlloc, riscv};
-use mapper::{PageTableEntry, *};
+use mapper::*;
 
 const UNINITALISED: usize = 0xdeadbabe;
 const MODE_SV39: usize = 8usize << 60;
@@ -21,18 +21,16 @@ pub fn init(balloc: &mut BitMapAlloc) {
 
     PAGE_TABLE.store(page_table_addr, Ordering::Relaxed);
 
-    let page_table = unsafe { &mut *(page_table_addr as *mut [PageTableEntry; 512]) };
+    let page_table = page_table_addr as *mut [usize; 512];
 
-    for i in 0..10000 {
-        let offset = i * 4096;
-        map(
-            balloc,
-            page_table,
-            0x8000_0000 + offset,
-            0x8000_0000 + offset,
-            Perms::all(),
-        );
-    }
+    map(
+        balloc,
+        page_table,
+        0x8000_0000,
+        0x8000_0000,
+        Perms::all(),
+        20,
+    );
 }
 
 #[unsafe(no_mangle)]
@@ -42,9 +40,15 @@ pub fn inithart() {
 
     let satp_entry = MODE_SV39 | (kptbl >> 12);
 
+    unsafe {
+        let pc: usize;
+        core::arch::asm!("auipc {}, 0", out(reg) pc);
+        log::info!("Current PC: {:#x}", pc);
+    }
+
     riscv::sfence_vma();
     riscv::satp::write(satp_entry);
     riscv::sfence_vma();
 
-    log::info!("PRE: satp set to value: {:#x}", satp_entry);
+    log::info!("satp set to value: {:#x}", satp_entry);
 }

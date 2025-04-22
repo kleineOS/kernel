@@ -51,17 +51,17 @@ impl<const SIZE: usize> BitMap<SIZE> {
         }
     }
 
-    /// displays the "index" value of the bitmap (pos / 8). this results in 8 total bits being
-    /// displayed in logical order (the physical order is reversed). mostly just for debugging
-    pub fn display_chunk(&self, pos: usize) {
-        let index = pos / 8;
-
-        // safety: this is safe as long as self.inner is valid
-        let value = unsafe { (*self.inner)[index] };
-        let value = value.reverse_bits();
-
-        crate::println!("{value:#08b}");
-    }
+    // displays the "index" value of the bitmap (pos / 8). this results in 8 total bits being
+    // displayed in logical order (the physical order is reversed). mostly just for debugging
+    // pub fn display_chunk(&self, pos: usize) {
+    //     let index = pos / 8;
+    //
+    //     // safety: this is safe as long as self.inner is valid
+    //     let value = unsafe { (*self.inner)[index] };
+    //     let value = value.reverse_bits();
+    //
+    //     crate::println!("{value:#08b}");
+    // }
 }
 
 #[cfg(test)]

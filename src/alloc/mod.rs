@@ -46,7 +46,7 @@ impl BitMapAlloc {
                     found += 1;
                 }
                 // free, and we are already in a chain
-                (true, Some(i)) => found += 1,
+                (true, Some(_)) => found += 1,
                 // not free, and we have not found anything yet
                 (false, None) => (),
             };

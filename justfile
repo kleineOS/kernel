@@ -7,7 +7,7 @@ OBJDUMP := "riscv64-linux-gnu-objdump"
 # VM config
 CORE_COUNT := "1"
 MEM_SIZE := "256M"
-MACHINE := "virt"
+MACHINE := "virt,aclint=on,aia=aplic-imsic"
 
 @default: run-dbg
 

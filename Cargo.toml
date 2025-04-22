@@ -19,4 +19,7 @@ riscv = { version = "0.13.0", features = ["s-mode"] }
 [target.'cfg(target_arch = "riscv64")'.dependencies.fdt]
 git = "https://github.com/repnop/fdt.git"
 rev = "059bb2383873f8001959456e36ec123228f67642"
-features = ["pretty-printing"]
+
+[features]
+default = [ "fdt_pretty_printing" ]
+fdt_pretty_printing = ["fdt/pretty-printing"]

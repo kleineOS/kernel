@@ -3,3 +3,7 @@
 # device tree files, I use them for debugging
 *.dts
 *.dtb
+
+# these configs are specific to me
+.lldbinit
+.gdbinit

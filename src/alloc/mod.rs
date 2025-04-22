@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 //! (to be moved)
 //! A simple bitmap allocator
 

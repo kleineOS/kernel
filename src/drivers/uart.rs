@@ -1,1 +1,1 @@
-pub fn init() {}
+pub fn init(fdt: fdt::Fdt) {}

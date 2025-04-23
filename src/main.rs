@@ -39,18 +39,6 @@ fn is_main_hart() -> bool {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn test_balls() -> ! {
-    use sbi::srst::*;
-    for _ in 0..10000 {
-        println!("^w^ welcome to my operating system");
-    }
-
-    system_reset(ResetType::Shutdown);
-    // we run a pauseloop until OpenSBI processes our request to shutdown
-    riscv::pauseloop();
-}
-
-#[unsafe(no_mangle)]
 extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     println!("\n\n\n^w^ welcome to my operating system");
 
@@ -67,10 +55,12 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     log::debug!("HART#{hartid}");
 
     // safety: the fdt_ptr needs to be valid. this is "guaranteed" by OpenSBI
-    let _fdt = unsafe { fdt::Fdt::from_ptr(fdt_ptr as *const u8) }.expect("could not parse fdt");
+    let fdt = unsafe { fdt::Fdt::from_ptr(fdt_ptr as *const u8) }.expect("could not parse fdt");
 
     let balloc = alloc::BitMapAlloc::init();
     vmem::init(&mut balloc.lock());
+
+    drivers::uart::init(fdt);
 
     #[cfg(test)]
     test_main();

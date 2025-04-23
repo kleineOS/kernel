@@ -5,7 +5,7 @@ QEMU := "qemu-system-riscv64"
 DEBUGGER := "rust-gdb"
 OBJDUMP := "riscv64-linux-gnu-objdump"
 # VM config
-CORE_COUNT := "1"
+CORE_COUNT := "4"
 MEM_SIZE := "256M"
 MACHINE := "virt,aclint=on,aia=aplic-imsic"
 

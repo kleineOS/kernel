@@ -40,7 +40,7 @@ fn walk(balloc: &mut BitMapAlloc, mut pagetable: &mut [usize; 512], vaddr: usize
     &mut pagetable[PX(0, vaddr)]
 }
 
-fn map(
+pub fn map(
     balloc: &mut BitMapAlloc,
     root: &mut [usize; 512],
     paddr: usize,

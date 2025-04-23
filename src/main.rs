@@ -5,6 +5,7 @@
 #![reexport_test_harness_main = "test_main"]
 
 mod alloc;
+mod drivers;
 mod riscv;
 mod trap;
 mod vmem;
@@ -35,6 +36,18 @@ fn is_main_hart() -> bool {
     INIT_DONE
         .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
         .is_ok()
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn test_balls() -> ! {
+    use sbi::srst::*;
+    for _ in 0..10000 {
+        println!("^w^ welcome to my operating system");
+    }
+
+    system_reset(ResetType::Shutdown);
+    // we run a pauseloop until OpenSBI processes our request to shutdown
+    riscv::pauseloop();
 }
 
 #[unsafe(no_mangle)]

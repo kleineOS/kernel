@@ -2,12 +2,31 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::{alloc::BitMapAlloc, riscv};
 
+// TODO: use AtomicPtr
 static PAGE_TABLE: AtomicUsize = AtomicUsize::new(0xdead_babe);
+
+bitflags::bitflags! {
+    #[derive(Debug)]
+    pub struct Perms: usize {
+        const READ = 1 << 1;
+        // WRITE without READ is an invalid state
+        const READ_WRITE = Self::READ.bits() | 1 << 2 ;
+        const EXEC = 1 << 3;
+    }
+}
+
+#[derive(Debug)]
+pub struct MemMapReq {
+    pub paddr: usize,
+    pub vaddr: usize,
+    pub pages: usize,
+    pub perms: Perms,
+}
 
 // TODO: DO NOT HARD CODE THIS MF
 const KERNEL_START: usize = 0x8020_0000;
 
-pub fn init(balloc: &mut BitMapAlloc) {
+pub fn init<'a>(balloc: &mut BitMapAlloc) -> &'a mut [usize; 512] {
     let etext = unsafe { crate::ETEXT };
     // round it up to 4096 bytes
     let etext = (etext + 4095) & !4095;
@@ -25,10 +44,12 @@ pub fn init(balloc: &mut BitMapAlloc) {
         table,
         KERNEL_START,
         KERNEL_START,
-        0b1110,
+        Perms::EXEC,
         kernel_pages,
     );
-    map(balloc, table, etext, etext, 0b1110, 200);
+    map(balloc, table, etext, etext, Perms::READ_WRITE, 200);
+
+    table
 }
 
 fn walk(balloc: &mut BitMapAlloc, mut pagetable: &mut [usize; 512], vaddr: usize) -> *mut usize {
@@ -61,7 +82,7 @@ pub fn map(
     root: &mut [usize; 512],
     paddr: usize,
     vaddr: usize,
-    perms: usize,
+    perms: Perms,
     pages: usize,
 ) {
     assert!(vaddr & 4096 == 0);
@@ -79,7 +100,7 @@ pub fn map(
                 panic!("remap");
             }
 
-            *pte_ptr = PA2PTE(pa) | perms | 1 << 0;
+            *pte_ptr = PA2PTE(pa) | perms.bits() | 1 << 0;
         }
     }
 }

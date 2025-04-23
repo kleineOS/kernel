@@ -2,6 +2,7 @@
 //! A simple bitmap allocator
 
 mod bitmap;
+mod global_impl;
 
 use spin::Mutex;
 

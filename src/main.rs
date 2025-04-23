@@ -59,9 +59,21 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     let fdt = unsafe { fdt::Fdt::from_ptr(fdt_ptr as *const u8) }.expect("could not parse fdt");
 
     let balloc = alloc::BitMapAlloc::init();
-    vmem::init(&mut balloc.lock());
 
-    drivers::uart::init(fdt);
+    let table = { vmem::init(&mut balloc.lock()) };
+
+    let dmap = |mmr: vmem::MemMapReq| {
+        vmem::map(
+            &mut balloc.lock(),
+            table,
+            mmr.paddr,
+            mmr.vaddr,
+            mmr.perms,
+            mmr.pages,
+        );
+    };
+
+    drivers::uart::init(fdt, dmap).expect("could not init uart driver");
 
     #[cfg(test)]
     test_main();

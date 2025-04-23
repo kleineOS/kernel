@@ -8,7 +8,9 @@ pub fn init(balloc: &mut BitMapAlloc) {
     let tbl_addr = balloc.alloc(1);
     PAGE_TABLE.store(tbl_addr, Ordering::Relaxed);
 
+    // safety: we know that table_addr contains 4096 bytes, so this is safe
     let table = unsafe { &mut *(tbl_addr as *mut [usize; 512]) };
+
     log::info!("root page table is at {:#x?}", tbl_addr);
     map(balloc, table, 0x8020_0000, 0x8020_0000, 0xe, 4);
 }

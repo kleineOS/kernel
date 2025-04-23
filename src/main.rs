@@ -17,6 +17,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use riscv::sbi;
 
 unsafe extern "C" {
+    pub static ETEXT: usize;
     pub static STACK_TOP: usize;
     pub static STACK_BOTTOM: usize;
     pub static HEAP_TOP: usize;

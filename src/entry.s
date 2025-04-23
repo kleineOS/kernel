@@ -22,13 +22,15 @@ _start:
 
 # we also create global symbols to access the symbols we defined in linker.ld
 .section .rodata
-# we start with the symbols for our stack. __stack_bottom is to be moved into
-# the stack pointer, as a stack grows from high to low
+
+.global ETEXT
+ETEXT: .dword __etext
+
 .global STACK_TOP
 STACK_TOP: .dword __stack_top
+
 .global STACK_BOTTOM
 STACK_BOTTOM: .dword __stack_bottom
-# next is our heap. this is allocated right after the bottom of our stack. the
-# heap grows from low to high
+
 .global HEAP_TOP
 HEAP_TOP: .dword __heap_top

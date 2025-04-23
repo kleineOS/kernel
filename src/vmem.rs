@@ -4,7 +4,15 @@ use crate::{alloc::BitMapAlloc, riscv};
 
 static PAGE_TABLE: AtomicUsize = AtomicUsize::new(0xdead_babe);
 
+// TODO: DO NOT HARD CODE THIS MF
+const KERNEL_START: usize = 0x8020_0000;
+
 pub fn init(balloc: &mut BitMapAlloc) {
+    let etext = unsafe { crate::ETEXT };
+    // round it up to 4096 bytes
+    let etext = (etext + 4095) & !4095;
+    let kernel_pages = (etext - KERNEL_START) / 4096;
+
     let tbl_addr = balloc.alloc(1);
     PAGE_TABLE.store(tbl_addr, Ordering::Relaxed);
 
@@ -12,7 +20,15 @@ pub fn init(balloc: &mut BitMapAlloc) {
     let table = unsafe { &mut *(tbl_addr as *mut [usize; 512]) };
 
     log::info!("root page table is at {:#x?}", tbl_addr);
-    map(balloc, table, 0x8020_0000, 0x8020_0000, 0xe, 4);
+    map(
+        balloc,
+        table,
+        KERNEL_START,
+        KERNEL_START,
+        0b1110,
+        kernel_pages,
+    );
+    map(balloc, table, etext, etext, 0b1110, 200);
 }
 
 fn walk(balloc: &mut BitMapAlloc, mut pagetable: &mut [usize; 512], vaddr: usize) -> *mut usize {
@@ -73,12 +89,6 @@ pub fn inithart() {
 
     const MODE_SV39: usize = 8usize << 60;
     let satp_entry = MODE_SV39 | (kptbl >> 12);
-
-    unsafe {
-        let pc: usize;
-        core::arch::asm!("auipc {}, 0", out(reg) pc);
-        log::info!("Current PC: {:#x}", pc);
-    }
 
     riscv::sfence_vma();
     riscv::satp::write(satp_entry);

@@ -5,7 +5,7 @@
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::{alloc::BitMapAlloc, riscv};
+use crate::{allocator::BitMapAlloc, riscv};
 
 static PAGE_TABLE: AtomicUsize = AtomicUsize::new(0xdead_babe);
 

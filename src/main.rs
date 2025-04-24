@@ -4,7 +4,7 @@
 #![test_runner(test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
-mod alloc;
+mod allocator;
 mod drivers;
 mod riscv;
 mod trap;
@@ -58,7 +58,7 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     // safety: the fdt_ptr needs to be valid. this is "guaranteed" by OpenSBI
     let fdt = unsafe { fdt::Fdt::from_ptr(fdt_ptr as *const u8) }.expect("could not parse fdt");
 
-    let balloc = alloc::BitMapAlloc::init();
+    let balloc = allocator::BitMapAlloc::init();
 
     {
         let mut balloc = balloc.lock();

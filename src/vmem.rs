@@ -100,7 +100,7 @@ fn map(
     perms: Perms,
     pages: usize,
 ) {
-    assert!(vaddr & 4096 == 0);
+    assert!((vaddr & 4096) % 4096 == 0);
     assert!(pages > 0);
 
     for i in 0..pages {

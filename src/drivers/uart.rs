@@ -1,19 +1,14 @@
 //! A driver for the 16550A UART device
 
-use crate::vmem::{MemMapReq, Perms};
+use crate::vmem::{Mapper, Perms};
 use errors::*;
 
 const COMPATIBLE: &[&str] = &["ns16550a"];
 
-pub fn init<F: FnMut(MemMapReq)>(fdt: fdt::Fdt, mut dmap: F) -> Result<(), ErrorKind> {
+pub fn init(fdt: fdt::Fdt, mapper: &mut Mapper) -> Result<(), ErrorKind> {
     let base_addr = get_mem_addr(fdt).ok_or(ErrorKind::DeviceNotFound)?;
 
-    let map = MemMapReq {
-        paddr: base_addr,
-        vaddr: base_addr,
-        pages: 1,
-        perms: Perms::READ_WRITE,
-    };
+    mapper.map(base_addr, base_addr, Perms::READ_WRITE, 1);
 
     Ok(())
 }

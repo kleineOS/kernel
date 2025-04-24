@@ -1,12 +1,16 @@
+//! TODO:
+//! - [ ] Use AtomicPtr instead of AtomicUsize
+//! - [ ] Replace the .expect and panic! with Result
+//! - [ ] Dynamically read the start of the .text section
+
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::{alloc::BitMapAlloc, riscv};
 
-// TODO: use AtomicPtr
 static PAGE_TABLE: AtomicUsize = AtomicUsize::new(0xdead_babe);
 
 bitflags::bitflags! {
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Copy)]
     pub struct Perms: usize {
         const READ = 1 << 1;
         // WRITE without READ is an invalid state
@@ -15,18 +19,55 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Debug)]
-pub struct MemMapReq {
-    pub paddr: usize,
-    pub vaddr: usize,
-    pub pages: usize,
-    pub perms: Perms,
+/// A struct that holds a reference to an allocator and the root page table. This allows drivers to
+/// map pages, without having to worry about anything outside their scope
+pub struct Mapper<'a> {
+    balloc: &'a mut BitMapAlloc,
+    table: &'a mut [PTEntry; 512],
 }
 
-// TODO: DO NOT HARD CODE THIS MF
+impl<'a> Mapper<'a> {
+    pub fn map(&mut self, paddr: usize, vaddr: usize, perms: Perms, pages: usize) {
+        map(self.balloc, self.table, paddr, vaddr, perms, pages);
+    }
+}
+
+#[repr(C)]
+struct PTEntry {
+    inner: usize,
+}
+
+impl PTEntry {
+    fn is_valid(&self) -> bool {
+        (self.inner & (1 << 0)) != 0
+    }
+
+    fn set_valid(&mut self, valid: bool) {
+        let valid = if valid { 1 << 0 } else { 0 };
+        self.inner |= valid;
+    }
+
+    fn set_perms(&mut self, perms: Perms) {
+        self.inner |= perms.bits();
+    }
+
+    /// set inner from physical address
+    fn set_inner_from_pa(&mut self, paddr: usize) {
+        self.inner = (paddr >> 12) << 10;
+    }
+
+    fn get_physical_addr(&self) -> usize {
+        (self.inner >> 10) << 12
+    }
+
+    fn clear(&mut self) {
+        self.inner = 0
+    }
+}
+
 const KERNEL_START: usize = 0x8020_0000;
 
-pub fn init<'a>(balloc: &mut BitMapAlloc) -> &'a mut [usize; 512] {
+pub fn init(balloc: &mut BitMapAlloc) -> Mapper {
     let etext = unsafe { crate::ETEXT };
     // round it up to 4096 bytes
     let etext = (etext + 4095) & !4095;
@@ -36,9 +77,8 @@ pub fn init<'a>(balloc: &mut BitMapAlloc) -> &'a mut [usize; 512] {
     PAGE_TABLE.store(tbl_addr, Ordering::Relaxed);
 
     // safety: we know that table_addr contains 4096 bytes, so this is safe
-    let table = unsafe { &mut *(tbl_addr as *mut [usize; 512]) };
+    let table = unsafe { &mut *(tbl_addr as *mut [PTEntry; 512]) };
 
-    log::info!("root page table is at {:#x?}", tbl_addr);
     map(
         balloc,
         table,
@@ -49,37 +89,12 @@ pub fn init<'a>(balloc: &mut BitMapAlloc) -> &'a mut [usize; 512] {
     );
     map(balloc, table, etext, etext, Perms::READ_WRITE, 200);
 
-    table
+    Mapper { balloc, table }
 }
 
-fn walk(balloc: &mut BitMapAlloc, mut pagetable: &mut [usize; 512], vaddr: usize) -> *mut usize {
-    for level in [2, 1].iter() {
-        let idx = PX(*level, vaddr);
-        let pte = &mut pagetable[idx];
-
-        if (*pte & (1 << 0)) != 0 {
-            let pa = PTE2PA(*pte);
-            pagetable = unsafe { &mut *(pa as *mut [usize; 512]) };
-        } else {
-            let new_table_addr = balloc.alloc(1);
-            let new_table = unsafe { &mut *(new_table_addr as *mut [usize; 512]) };
-
-            for entry in new_table.iter_mut() {
-                *entry = 0;
-            }
-
-            *pte = PA2PTE(new_table_addr) | (1 << 0); // Set valid bit
-
-            pagetable = new_table;
-        }
-    }
-
-    &mut pagetable[PX(0, vaddr)]
-}
-
-pub fn map(
+fn map(
     balloc: &mut BitMapAlloc,
-    root: &mut [usize; 512],
+    root: &mut [PTEntry; 512],
     paddr: usize,
     vaddr: usize,
     perms: Perms,
@@ -93,16 +108,52 @@ pub fn map(
         let va = vaddr + offset;
         let pa = paddr + offset;
 
-        let pte_ptr = walk(balloc, root, va);
+        let pte = unsafe {
+            walk(balloc, root, va)
+                .as_mut()
+                .expect("could not dereference pointer")
+        };
 
-        unsafe {
-            if *pte_ptr & 1 << 0 != 0 {
-                panic!("remap");
+        // the walk function does not modify the page table entries on level 0. So if the valid bit
+        // is flipped, the user has most likely mapped an overlapping region
+        if pte.is_valid() {
+            panic!("remap detected, aborting");
+        }
+
+        pte.set_inner_from_pa(pa);
+        pte.set_perms(perms);
+        pte.set_valid(true);
+    }
+}
+
+fn walk(
+    balloc: &mut BitMapAlloc,
+    mut pagetable: &mut [PTEntry; 512],
+    vaddr: usize,
+) -> *mut PTEntry {
+    for level in [2, 1].iter() {
+        let idx = idx_for_vaddr(*level, vaddr);
+        let pte = &mut pagetable[idx];
+
+        if pte.is_valid() {
+            let pa = pte.get_physical_addr();
+            pagetable = unsafe { &mut *(pa as *mut [PTEntry; 512]) };
+        } else {
+            let new_table_addr = balloc.alloc(1);
+            let new_table = unsafe { &mut *(new_table_addr as *mut [PTEntry; 512]) };
+
+            for entry in new_table.iter_mut() {
+                entry.clear()
             }
 
-            *pte_ptr = PA2PTE(pa) | perms.bits() | 1 << 0;
+            pte.set_inner_from_pa(new_table_addr);
+            pte.set_valid(true);
+
+            pagetable = new_table;
         }
     }
+
+    &mut pagetable[idx_for_vaddr(0, vaddr)]
 }
 
 pub fn inithart() {
@@ -115,23 +166,10 @@ pub fn inithart() {
     riscv::satp::write(satp_entry);
     riscv::sfence_vma();
 
-    log::info!("satp set to value: {:#x}", satp_entry);
+    log::debug!("satp set to value: {:#x}", satp_entry);
 }
 
 #[inline]
-#[allow(non_snake_case)]
-pub fn PX(level: usize, va: usize) -> usize {
+pub fn idx_for_vaddr(level: usize, va: usize) -> usize {
     (va >> (12 + (9 * level))) & 0x1FF
-}
-
-#[inline]
-#[allow(non_snake_case)]
-pub fn PTE2PA(pte: usize) -> usize {
-    (pte >> 10) << 12
-}
-
-#[inline]
-#[allow(non_snake_case)]
-pub fn PA2PTE(pa: usize) -> usize {
-    (pa >> 12) << 10
 }

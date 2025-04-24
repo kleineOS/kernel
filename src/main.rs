@@ -46,7 +46,7 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     assert_eq!(size_of::<usize>(), 64 / 8, "we only support 64-bit");
     // not a requirement, but we define our linker script this way and it is easy to define rules
     // in asserts so we know if we messed up somewhere when modifying the linker script
-    unsafe { assert_eq!(STACK_BOTTOM, HEAP_TOP, "heap must come after the stack") };
+    unsafe { assert_eq!(STACK_BOTTOM, HEAP_TOP,) };
 
     if !is_main_hart() {
         todo!("multi threading");
@@ -60,20 +60,11 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
 
     let balloc = alloc::BitMapAlloc::init();
 
-    let table = { vmem::init(&mut balloc.lock()) };
-
-    let dmap = |mmr: vmem::MemMapReq| {
-        vmem::map(
-            &mut balloc.lock(),
-            table,
-            mmr.paddr,
-            mmr.vaddr,
-            mmr.perms,
-            mmr.pages,
-        );
-    };
-
-    drivers::uart::init(fdt, dmap).expect("could not init uart driver");
+    {
+        let mut balloc = balloc.lock();
+        let mut mapper = vmem::init(&mut balloc);
+        drivers::uart::init(fdt, &mut mapper).expect("could not init uart driver");
+    }
 
     #[cfg(test)]
     test_main();

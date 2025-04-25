@@ -1,6 +1,8 @@
 //! (to be moved)
 //! A simple bitmap allocator
 
+#![allow(unused)]
+
 mod bitmap;
 mod global_impl;
 

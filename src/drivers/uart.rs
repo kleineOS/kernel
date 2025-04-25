@@ -1,16 +1,33 @@
 //! A driver for the 16550A UART device
+//!
+//! TODO: will continue the impl once I have some other stuff done
 
+use super::{CharDriver, Driver, DriverError};
 use crate::vmem::{Mapper, Perms};
-use errors::*;
 
 const COMPATIBLE: &[&str] = &["ns16550a"];
 
-pub fn init(fdt: fdt::Fdt, mapper: &mut Mapper) -> Result<(), ErrorKind> {
-    let base_addr = get_mem_addr(fdt).ok_or(ErrorKind::DeviceNotFound)?;
+pub struct UartDriver {
+    base_addr: usize,
+}
 
-    mapper.map(base_addr, base_addr, Perms::READ_WRITE, 1);
+impl UartDriver {}
 
-    Ok(())
+impl Driver for UartDriver {
+    fn init(fdt: fdt::Fdt, mapper: &mut Mapper) -> Result<Self, DriverError> {
+        let base_addr = get_mem_addr(fdt).ok_or(DriverError::DeviceNotFound)?;
+        mapper.map(base_addr, base_addr, Perms::READ_WRITE, 1);
+
+        Ok(Self { base_addr })
+    }
+
+    fn inithart() {}
+}
+
+impl CharDriver for UartDriver {
+    fn put_char(&self, c: char) {
+        todo!()
+    }
 }
 
 fn get_mem_addr(fdt: fdt::Fdt) -> Option<usize> {
@@ -22,24 +39,4 @@ fn get_mem_addr(fdt: fdt::Fdt) -> Option<usize> {
     let address = memory_region.starting_address as usize;
 
     Some(address)
-}
-
-mod errors {
-
-    #[derive(Debug)]
-    pub enum ErrorKind {
-        DeviceNotFound,
-    }
-
-    impl core::fmt::Display for ErrorKind {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            use ErrorKind::*;
-
-            match self {
-                DeviceNotFound => write!(f, "Device not found"),
-            }
-        }
-    }
-
-    impl core::error::Error for ErrorKind {}
 }

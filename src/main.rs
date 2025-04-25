@@ -13,6 +13,7 @@ mod writer;
 
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, Ordering};
+use drivers::*;
 
 use riscv::sbi;
 
@@ -56,14 +57,14 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     log::debug!("HART#{hartid}");
 
     // safety: the fdt_ptr needs to be valid. this is "guaranteed" by OpenSBI
-    let fdt = unsafe { fdt::Fdt::from_ptr(fdt_ptr as *const u8) }.expect("could not parse fdt");
+    let _fdt = unsafe { fdt::Fdt::from_ptr(fdt_ptr as *const u8) }.expect("could not parse fdt");
 
     let balloc = allocator::BitMapAlloc::init();
 
     {
         let mut balloc = balloc.lock();
-        let mut mapper = vmem::init(&mut balloc);
-        drivers::uart::init(fdt, &mut mapper).expect("could not init uart driver");
+        let mut _mapper = vmem::init(&mut balloc);
+        // uart::UartDriver::init(fdt, &mut mapper).expect("could not init uart driver");
     }
 
     #[cfg(test)]
@@ -90,7 +91,8 @@ fn panic(info: &PanicInfo) -> ! {
     #[cfg(test)]
     println!("[TEST FAILED]");
     println!("{}", info);
-    loop {}
+
+    riscv::pauseloop();
 }
 
 #[cfg(test)]
@@ -107,7 +109,6 @@ pub fn test_runner(tests: &[&dyn Fn()]) -> ! {
     }
 
     system_reset(ResetType::Shutdown);
-    // we run a pauseloop until OpenSBI processes our request to shutdown
     riscv::pauseloop();
 }
 

@@ -38,5 +38,8 @@ SECTIONS {
     PROVIDE(__stack_top = .);
     . += 4096;
     PROVIDE(__stack_bottom = .);
-    PROVIDE(__heap_top = .);
+    PROVIDE(__heap0_top = .);
+    . += 0x1001000; /* this is what our bitmap alloc controls */
+    PROVIDE(__heap0_bottom = .);
+    PROVIDE(__heap1_top = .);
 }

@@ -25,12 +25,18 @@ _start:
 
 .global ETEXT
 ETEXT: .dword __etext
-
+# stack
 .global STACK_TOP
 STACK_TOP: .dword __stack_top
-
 .global STACK_BOTTOM
 STACK_BOTTOM: .dword __stack_bottom
-
-.global HEAP_TOP
-HEAP_TOP: .dword __heap_top
+# the first heap, this is for very early stage init
+.global HEAP0_TOP
+HEAP0_TOP: .dword __heap0_top
+.global HEAP0_BOTTOM
+HEAP0_BOTTOM: .dword __heap0_bottom
+# the second heap, this is managed by a linked list allocator
+.global HEAP1_TOP
+HEAP1_TOP: .dword __heap1_top
+# .global HEAP1_BOTTOM
+# HEAP1_BOTTOM: .dword __heap1_bottom

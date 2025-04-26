@@ -1,11 +1,14 @@
 #![no_std]
 #![no_main]
-#![feature(custom_test_frameworks, abi_riscv_interrupt)]
+#![feature(custom_test_frameworks)]
 #![test_runner(test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
+extern crate alloc;
+
 mod allocator;
 mod drivers;
+mod proc;
 mod riscv;
 mod trap;
 mod vmem;
@@ -13,15 +16,18 @@ mod writer;
 
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, Ordering};
-use drivers::*;
 
 use riscv::sbi;
+
+#[global_allocator]
+static ALLOCATOR: allocator::GBMAlloc = allocator::GBMAlloc;
 
 unsafe extern "C" {
     pub static ETEXT: usize;
     pub static STACK_TOP: usize;
     pub static STACK_BOTTOM: usize;
-    pub static HEAP_TOP: usize;
+    pub static HEAP0_TOP: usize;
+    pub static HEAP1_TOP: usize;
 }
 
 pub const INTERVAL: usize = 8000000;
@@ -47,7 +53,7 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     assert_eq!(size_of::<usize>(), 64 / 8, "we only support 64-bit");
     // not a requirement, but we define our linker script this way and it is easy to define rules
     // in asserts so we know if we messed up somewhere when modifying the linker script
-    unsafe { assert_eq!(STACK_BOTTOM, HEAP_TOP,) };
+    unsafe { assert_eq!(STACK_BOTTOM, HEAP0_TOP,) };
 
     if !is_main_hart() {
         todo!("multi threading");
@@ -56,10 +62,15 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     writer::init_log();
     log::debug!("HART#{hartid}");
 
+    log::debug!("{:#x}", unsafe { HEAP0_TOP });
+    log::debug!("{:#x}", unsafe { HEAP1_TOP });
+    log::debug!("{}", unsafe { HEAP1_TOP - HEAP0_TOP });
+
     // safety: the fdt_ptr needs to be valid. this is "guaranteed" by OpenSBI
     let _fdt = unsafe { fdt::Fdt::from_ptr(fdt_ptr as *const u8) }.expect("could not parse fdt");
 
-    let balloc = allocator::BitMapAlloc::init();
+    let balloc_addr = unsafe { HEAP0_TOP };
+    let balloc = allocator::BitMapAlloc::init(balloc_addr);
 
     {
         let mut balloc = balloc.lock();
@@ -79,6 +90,10 @@ fn kmain() -> ! {
     sbi::time::set_timer(riscv::time() + INTERVAL);
 
     vmem::inithart();
+
+    for i in alloc::vec![1, 2, 3, 5] {
+        log::info!("{i}");
+    }
 
     log::info!("Entering loop...");
     riscv::pauseloop();

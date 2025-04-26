@@ -1,21 +1,33 @@
-// use core::sync::atomic::{AtomicBool, Ordering};
+#![allow(unused)]
 
-/// A simple bitmal data structure that can store up to N * 8 bits of data. It uses smart bitwise
-/// operations to store more data than a simple array of bools. It cannot represent any more data,
-/// and it cannot grow. It also cannot be created twice
+/// A simple data structure that holds SIZE * 8 bits of data. Stores more data than a simple array
+/// of bools by using bitwise operations to fully utilise an 8 bit wide memory address.
+///
+/// **IMPORTANT**: Can store up to SIZE * 8 "bool" values
+///
+/// # Usage
+/// ```rust
+/// let size = 4096;
+/// let addr = 0x8000_0000; // must be a valid address
+/// let mut bm = unsafe { BitMap::zeroed(addr) };
+/// assert_eq!(bm.len(), size * 8);
+/// bm.put(123, true);
+/// assert_eq!(bm.get(123), true);
+/// ```
 #[derive(Debug)]
 pub struct BitMap<const SIZE: usize> {
     inner: *mut [u8; SIZE],
 }
 
 impl<const SIZE: usize> BitMap<SIZE> {
-    pub fn zeroed(addr: usize) -> Self {
-        // commented out to make this data structure more generic
-        // static TOGGLE: AtomicBool = AtomicBool::new(false);
-        // TOGGLE
-        //     .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        //     .expect("multiple invocations of BitMap::zero is not supported");
+    pub const fn len(&self) -> usize {
+        SIZE * u8::BITS as usize
+    }
 
+    /// Create a new [BitMap] at the given address, with all bits flipped to 0
+    /// # Safety
+    /// safe, as long as the `addr` is valid
+    pub unsafe fn zeroed(addr: usize) -> Self {
         let inner = addr as *mut [u8; SIZE];
 
         // safety: this is safe as long as the address of inner is valid
@@ -24,6 +36,7 @@ impl<const SIZE: usize> BitMap<SIZE> {
         Self { inner }
     }
 
+    /// Get a bit from the given position
     pub fn get(&self, pos: usize) -> bool {
         let index = pos / 8;
         let offset = pos % 8;
@@ -35,6 +48,7 @@ impl<const SIZE: usize> BitMap<SIZE> {
         value == 1
     }
 
+    /// Flip a bit in the given position to your desired value
     pub fn put(&mut self, pos: usize, value: bool) {
         assert!(pos < SIZE * size_of::<u8>(), "bitmap is full");
 
@@ -71,26 +85,24 @@ mod tests {
 
     #[test_case]
     fn test_zero() {
-        let addr = unsafe { crate::HEAP_TOP };
-        let bm = BitMap::<PAGE_SIZE>::zeroed(addr);
+        const N: usize = 1234;
+        let bm = unsafe { BitMap::<N>::zeroed(crate::HEAP0_TOP) };
 
-        for i in 0..PAGE_SIZE {
+        for i in 0..N {
             unsafe { assert_eq!((*bm.inner)[i], 0, "index#{i}") };
         }
 
-        // what if we want a different quantity?
-        const N: usize = 1234;
-        let bm = BitMap::<N>::zeroed(addr);
+        // and a larger, the "default" PAGE_SIZE amount
+        let bm = unsafe { BitMap::<PAGE_SIZE>::zeroed(crate::HEAP0_TOP) };
 
-        for i in 0..N {
+        for i in 0..PAGE_SIZE {
             unsafe { assert_eq!((*bm.inner)[i], 0, "index#{i}") };
         }
     }
 
     #[test_case]
     fn test_get_put() {
-        let addr = unsafe { crate::HEAP_TOP };
-        let mut bm = BitMap::<PAGE_SIZE>::zeroed(addr);
+        let mut bm = unsafe { BitMap::<PAGE_SIZE>::zeroed(crate::HEAP0_TOP) };
 
         // initial state should be all 0s (aka false)
         assert!(!bm.get(0));
@@ -100,5 +112,12 @@ mod tests {
 
         bm.put(13, false);
         assert!(!bm.get(13));
+    }
+
+    #[test_case]
+    fn test_len() {
+        let addr = unsafe { crate::HEAP0_TOP };
+        let bm = unsafe { BitMap::<PAGE_SIZE>::zeroed(crate::HEAP0_TOP) };
+        assert_eq!(bm.len(), PAGE_SIZE * 8);
     }
 }

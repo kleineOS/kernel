@@ -1,7 +1,15 @@
 use core::alloc::GlobalAlloc;
 
-unsafe impl GlobalAlloc for super::BitMapAlloc {
+use crate::PAGE_SIZE;
+
+use super::BitMapAlloc;
+
+/// global bitmap alloc
+pub struct GBMAlloc;
+
+unsafe impl GlobalAlloc for GBMAlloc {
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
+        log::debug!("{layout:?}");
         todo!()
     }
 

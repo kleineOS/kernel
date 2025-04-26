@@ -8,25 +8,27 @@ mod global_impl;
 
 use spin::Mutex;
 
-use crate::{HEAP_TOP, PAGE_SIZE};
+use crate::PAGE_SIZE;
+pub use global_impl::GBMAlloc;
 
 #[derive(Debug)]
 pub struct BitMapAlloc {
     pub(crate) bitmap: bitmap::BitMap<PAGE_SIZE>,
+    base: usize,
 }
 
 impl BitMapAlloc {
-    pub fn init() -> Mutex<Self> {
-        let addr = unsafe { HEAP_TOP };
-        let bitmap = bitmap::BitMap::zeroed(addr);
+    pub fn init(addr: usize) -> Mutex<Self> {
+        let bitmap = unsafe { bitmap::BitMap::zeroed(addr) };
+        let base = addr;
 
-        Mutex::new(Self { bitmap })
+        Mutex::new(Self { bitmap, base })
     }
 
     /// allocate the given number of contigous pages
     pub fn alloc(&mut self, num_pages: usize) -> usize {
         assert!(num_pages > 0, "Cannot allocate zero pages");
-        let base_addr = unsafe { HEAP_TOP } + PAGE_SIZE;
+        let base_addr = self.base + PAGE_SIZE;
 
         let mut start_idx = None;
         let mut found = 0;
@@ -70,7 +72,7 @@ impl BitMapAlloc {
 
     pub fn free(&mut self, addr: usize, num_pages: usize) {
         assert!(num_pages > 0, "Cannot free zero pages");
-        let base_addr = unsafe { HEAP_TOP } + PAGE_SIZE;
+        let base_addr = self.base + PAGE_SIZE;
 
         let idx = (addr - base_addr) / PAGE_SIZE;
 
@@ -87,8 +89,8 @@ mod tests {
 
     #[test_case]
     fn test_balloc() {
-        let top = unsafe { crate::HEAP_TOP };
-        let balloc = BitMapAlloc::init();
+        let top = unsafe { crate::HEAP0_TOP };
+        let balloc = BitMapAlloc::init(top);
 
         let alloc0 = balloc.lock().alloc(4);
         assert_eq!(alloc0, top + 0x1000);

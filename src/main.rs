@@ -62,10 +62,6 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     writer::init_log();
     log::debug!("HART#{hartid}");
 
-    log::debug!("{:#x}", unsafe { HEAP0_TOP });
-    log::debug!("{:#x}", unsafe { HEAP1_TOP });
-    log::debug!("{}", unsafe { HEAP1_TOP - HEAP0_TOP });
-
     // safety: the fdt_ptr needs to be valid. this is "guaranteed" by OpenSBI
     let _fdt = unsafe { fdt::Fdt::from_ptr(fdt_ptr as *const u8) }.expect("could not parse fdt");
 

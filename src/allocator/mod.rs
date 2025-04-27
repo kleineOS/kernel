@@ -5,6 +5,7 @@
 
 mod bitmap;
 mod global_impl;
+mod tiered;
 
 use spin::Mutex;
 

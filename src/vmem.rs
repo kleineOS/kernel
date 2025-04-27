@@ -166,7 +166,7 @@ pub fn inithart() {
     riscv::satp::write(satp_entry);
     riscv::sfence_vma();
 
-    log::debug!("satp set to value: {:#x}", satp_entry);
+    log::debug!("satp set to value: {satp_entry:#x}");
 }
 
 #[inline]

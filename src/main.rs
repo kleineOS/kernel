@@ -17,16 +17,19 @@ mod writer;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, Ordering};
 
+use linked_list_allocator::LockedHeap;
 use riscv::sbi;
 
 #[global_allocator]
-static ALLOCATOR: allocator::GBMAlloc = allocator::GBMAlloc;
+static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 unsafe extern "C" {
     pub static ETEXT: usize;
     pub static STACK_TOP: usize;
     pub static STACK_BOTTOM: usize;
+    // reserved for a "dma" stype allocator (contigous allocations)
     pub static HEAP0_TOP: usize;
+    // reserved for a global_alloc which enables me to use `alloc`
     pub static HEAP1_TOP: usize;
 }
 
@@ -34,16 +37,17 @@ pub const INTERVAL: usize = 8000000;
 pub const PAGE_SIZE: usize = 0x1000; // 4096
 
 fn is_main_hart() -> bool {
-    // false if the global init has not yet been done
     static INIT_DONE: AtomicBool = AtomicBool::new(false);
-
-    // weird function, here is tldr:
-    // the function returns Some(_) if the expected state is `false` (first arg)
-    // if so, then the expected state is atomically modified to `true` (second arg)
-    // the third and fourth arguments define the ordering for atomic operations
     INIT_DONE
         .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
         .is_ok()
+}
+
+fn init_heap1() {
+    let heap_start = unsafe { HEAP1_TOP as *mut u8 };
+    let size = 256 * 1024 * 1024; // 256M
+
+    unsafe { ALLOCATOR.lock().init(heap_start, size / 8) }
 }
 
 #[unsafe(no_mangle)]
@@ -51,10 +55,6 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     println!("\n\n\n^w^ welcome to my operating system");
 
     assert_eq!(size_of::<usize>(), 64 / 8, "we only support 64-bit");
-    // not a requirement, but we define our linker script this way and it is easy to define rules
-    // in asserts so we know if we messed up somewhere when modifying the linker script
-    unsafe { assert_eq!(STACK_BOTTOM, HEAP0_TOP,) };
-
     if !is_main_hart() {
         todo!("multi threading");
     }
@@ -62,15 +62,22 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     writer::init_log();
     log::debug!("HART#{hartid}");
 
+    let balloc_addr = unsafe { HEAP0_TOP };
+    let balloc = allocator::BitMapAlloc::init(balloc_addr);
+    init_heap1();
+
     // safety: the fdt_ptr needs to be valid. this is "guaranteed" by OpenSBI
     let _fdt = unsafe { fdt::Fdt::from_ptr(fdt_ptr as *const u8) }.expect("could not parse fdt");
 
-    let balloc_addr = unsafe { HEAP0_TOP };
-    let balloc = allocator::BitMapAlloc::init(balloc_addr);
-
     {
         let mut balloc = balloc.lock();
-        let mut _mapper = vmem::init(&mut balloc);
+        let mut mapper = vmem::init(&mut balloc);
+
+        let heap1 = unsafe { HEAP1_TOP };
+        let size = 256 * 1024 * 1024;
+        let pages = (size / PAGE_SIZE) + 1;
+        mapper.map(heap1, heap1, vmem::Perms::READ_WRITE, pages);
+
         // uart::UartDriver::init(fdt, &mut mapper).expect("could not init uart driver");
     }
 
@@ -88,7 +95,7 @@ fn kmain() -> ! {
     vmem::inithart();
 
     for i in alloc::vec![1, 2, 3, 5] {
-        log::info!("{i}");
+        log::info!("reading from a dynamic vec {i}");
     }
 
     log::info!("Entering loop...");

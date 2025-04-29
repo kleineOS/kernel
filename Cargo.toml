@@ -10,6 +10,7 @@ opt-level = 1
 # architecture independent dependencies
 [dependencies]
 bitflags = "2.9.0"
+linked_list_allocator = "0.10.5"
 log = "0.4.27"
 #packed_struct = { version = "0.10.1", default-features = false }
 spin = "0.10.0"

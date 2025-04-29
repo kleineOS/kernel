@@ -13,12 +13,6 @@ pub struct InnerAlloc;
 /// global bitmap alloc
 pub struct GBMAlloc;
 
-// # Buddy system
-// |               256M              |
-// |                |                |
-// |       |        |       |        |
-// |   |   |    |   |   |   |    |   |
-
 unsafe impl GlobalAlloc for GBMAlloc {
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
         log::debug!("{layout:?}");

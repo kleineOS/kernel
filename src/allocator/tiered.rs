@@ -3,6 +3,8 @@
 //! or maybe a buddy
 //!
 //! This is used for more granular allocations.
+//!
+//! TODO: this is still a work in progress
 
 use crate::PAGE_SIZE;
 
@@ -13,6 +15,14 @@ pub struct BuddyTree {
     right: *mut BuddyTree,
     alloc_addr: usize,
 }
+
+// # Buddy system
+// Allocating 32M and 64M for example
+//
+// |              256M             |
+// |      128      |      128      |
+// |   64  |   64  |   64  |#######|
+// |###|32 |32 |32 |32 |32 |#######|
 
 pub struct BuddySystem {
     base: usize,

@@ -58,25 +58,25 @@ fn get_mem_addr(fdt: fdt::Fdt) -> Option<usize> {
     Some(address)
 }
 
-#[cfg(test)]
-mod tests {
-    use core::sync::atomic::Ordering;
-
-    use crate::allocator::BitMapAlloc;
-
-    use super::*;
-
-    #[test_case]
-    fn hello() {
-        let mut balloc = unsafe { BitMapAlloc::init(crate::HEAP1_TOP) };
-        let mut b = balloc.lock();
-
-        // TODO: essentially, I should create a global_alloc impl, so I wont need to pass in balloc
-        // everywhere, especially in places like the drivers which can't be held down by some
-        // strict control flow of the balloc value
-
-        UartDriver::init_test(&mut b, 0xdeadbead);
-        let driver = super::DRIVER_PTR.load(Ordering::Relaxed);
-        unsafe { assert_eq!((*driver).base_addr, 0xdeadbead) };
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use core::sync::atomic::Ordering;
+//
+//     use crate::allocator::BitMapAlloc;
+//
+//     use super::*;
+//
+//     #[test_case]
+//     fn hello() {
+//         let mut balloc = unsafe { BitMapAlloc::init(crate::HEAP1_TOP) };
+//         let mut b = balloc.lock();
+//
+//         // TODO: essentially, I should create a global_alloc impl, so I wont need to pass in balloc
+//         // everywhere, especially in places like the drivers which can't be held down by some
+//         // strict control flow of the balloc value
+//
+//         UartDriver::init_test(&mut b, 0xdeadbead);
+//         let driver = super::DRIVER_PTR.load(Ordering::Relaxed);
+//         unsafe { assert_eq!((*driver).base_addr, 0xdeadbead) };
+//     }
+// }

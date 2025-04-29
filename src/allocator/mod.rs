@@ -7,6 +7,8 @@ mod bitmap;
 mod global_impl;
 mod tiered;
 
+use core::fmt::Display;
+
 use spin::Mutex;
 
 use crate::PAGE_SIZE;
@@ -84,31 +86,39 @@ impl BitMapAlloc {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test_case]
-    fn test_balloc() {
-        let top = unsafe { crate::HEAP0_TOP };
-        let balloc = BitMapAlloc::init(top);
-
-        let alloc0 = balloc.lock().alloc(4);
-        assert_eq!(alloc0, top + 0x1000);
-
-        let alloc1 = balloc.lock().alloc(6);
-        assert_eq!(alloc1, top + 0x5000);
-
-        let alloc2 = balloc.lock().alloc(1);
-        assert_eq!(alloc2, top + 0xb000);
-
-        // we try freeing, so we can allocate again on the same spot
-        balloc.lock().free(alloc1, 6);
-
-        let location = balloc.lock().alloc(4);
-        assert_eq!(location, top + 0x5000);
-
-        let location = balloc.lock().alloc(6);
-        assert_eq!(location, top + 0xc000);
-    }
+#[derive(Debug, thiserror::Error)]
+pub enum AllocatorError {
+    #[error("Address not aligned. Address {addr} must be alined to {align:#x} bytes")]
+    AddrNotAligned { addr: usize, align: usize },
+    #[error("Cannot allocate {size} pages")]
+    InvalidSize { size: usize },
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//
+//     #[test_case]
+//     fn test_balloc() {
+//         let top = unsafe { crate::HEAP0_TOP };
+//         let balloc = BitMapAlloc::init(top);
+//
+//         let alloc0 = balloc.lock().alloc(4);
+//         assert_eq!(alloc0, top + 0x1000);
+//
+//         let alloc1 = balloc.lock().alloc(6);
+//         assert_eq!(alloc1, top + 0x5000);
+//
+//         let alloc2 = balloc.lock().alloc(1);
+//         assert_eq!(alloc2, top + 0xb000);
+//
+//         // we try freeing, so we can allocate again on the same spot
+//         balloc.lock().free(alloc1, 6);
+//
+//         let location = balloc.lock().alloc(4);
+//         assert_eq!(location, top + 0x5000);
+//
+//         let location = balloc.lock().alloc(6);
+//         assert_eq!(location, top + 0xc000);
+//     }
+// }

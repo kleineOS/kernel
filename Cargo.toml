@@ -13,6 +13,7 @@ bitflags = "2.9.0"
 log = "0.4.27"
 #packed_struct = { version = "0.10.1", default-features = false }
 spin = "0.10.0"
+thiserror = { version = "2.0.12", default-features = false }
 
 # right now, we only support RISC-V, but I am open to adding more
 [target.'cfg(target_arch = "riscv64")'.dependencies]

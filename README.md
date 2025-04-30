@@ -16,6 +16,12 @@ My experimentation ground
 2. Userspace with a basic shell
 3. Multiprocessing, and a demo to showcase it
 
+### Measurable goals
+
+1. A Gemini (protocol not AI) server
+2. A Gemini (protocol not AI) client
+3. (if I can pull it off) a mechanism to reload the kernel without reloading the userspace
+
 ---
 
 All code is licensed under the Apache-2.0 license

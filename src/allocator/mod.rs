@@ -84,6 +84,10 @@ impl BitMapAlloc {
             self.bitmap.put(i, false);
         }
     }
+
+    pub fn maximum(&self) -> usize {
+        crate::PAGE_SIZE * self.bitmap.len()
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

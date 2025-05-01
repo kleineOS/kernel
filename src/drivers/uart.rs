@@ -2,48 +2,81 @@
 //!
 //! TODO: will continue the impl once I have some other stuff done
 
-use core::{ptr::null_mut, sync::atomic::AtomicPtr};
+use core::{
+    ptr::null_mut,
+    sync::atomic::{AtomicPtr, Ordering},
+};
 
-use super::{CharDriver, Driver, DriverError};
+use alloc::boxed::Box;
+
+use super::DriverError;
 use crate::vmem::{Mapper, Perms};
 
 const COMPATIBLE: &[&str] = &["ns16550a"];
 
-static DRIVER_PTR: AtomicPtr<UartDriver> = AtomicPtr::new(null_mut());
+static DRIVER_PTR: AtomicPtr<CharDriver> = AtomicPtr::new(null_mut());
 
-pub struct UartDriver {
+/// Character device driver for ns16550a compatible UART devices
+#[derive(Debug)]
+pub struct CharDriver {
     base_addr: usize,
 }
 
-impl UartDriver {
-    #[cfg(test)]
-    fn init_test(balloc: &mut crate::allocator::BitMapAlloc, base_addr: usize) {
-        use core::sync::atomic::Ordering;
-
-        let struct_addr: usize = balloc.alloc(1);
-
-        let driver = UartDriver { base_addr };
-
-        unsafe { core::ptr::write(struct_addr as *mut UartDriver, driver) }
-
-        DRIVER_PTR.store(struct_addr as *mut UartDriver, Ordering::Relaxed);
-    }
-}
-
-impl Driver for UartDriver {
-    fn init(fdt: fdt::Fdt, mapper: &mut Mapper) -> Result<Self, DriverError> {
+impl CharDriver {
+    pub fn init(fdt: fdt::Fdt, mapper: &mut Mapper) -> Result<(), DriverError> {
         let base_addr = get_mem_addr(fdt).ok_or(DriverError::DeviceNotFound)?;
+
+        Self::init_direct(base_addr)?;
+
         mapper.map(base_addr, base_addr, Perms::READ_WRITE, 1);
 
-        Ok(Self { base_addr })
+        Ok(())
     }
 
-    fn inithart() {}
-}
+    pub fn log_addr() -> Result<(), DriverError> {
+        let this = Self::get_instance().ok_or(DriverError::DriverUninitialised)?;
 
-impl CharDriver for UartDriver {
-    fn put_char(&self, c: char) {
-        todo!()
+        let addr = this.base_addr;
+        log::info!("uart driver base_addr={addr:#x}",);
+
+        Ok(())
+    }
+
+    pub fn write(str: &str) -> Result<(), DriverError> {
+        let this = Self::get_instance().ok_or(DriverError::DriverUninitialised)?;
+
+        let addr = this.base_addr;
+
+        for c in str.chars() {
+            unsafe { core::ptr::write_volatile(addr as *mut char, c) };
+        }
+
+        Ok(())
+    }
+
+    fn get_instance() -> Option<&'static mut Self> {
+        unsafe { DRIVER_PTR.load(Ordering::Relaxed).as_mut() }
+    }
+
+    fn init_direct(base_addr: usize) -> Result<(), DriverError> {
+        let driver = Box::new(CharDriver { base_addr });
+        let driver_ptr = Box::leak(driver);
+
+        // only load value if previous value is null_mut
+        let res = DRIVER_PTR.compare_exchange(
+            null_mut(),
+            driver_ptr,
+            Ordering::AcqRel,
+            Ordering::Relaxed,
+        );
+
+        if res.is_err() {
+            // we need to make sure the drop logic is run
+            let _ = unsafe { Box::from_raw(driver_ptr) };
+            return Err(DriverError::AlreadyInitialised);
+        }
+
+        Ok(())
     }
 }
 
@@ -60,23 +93,17 @@ fn get_mem_addr(fdt: fdt::Fdt) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use core::sync::atomic::Ordering;
-
-    use crate::allocator::BitMapAlloc;
-
     use super::*;
 
     #[test_case]
-    fn hello() {
-        let mut balloc = unsafe { BitMapAlloc::init(crate::HEAP1_TOP) };
-        let mut b = balloc.lock();
+    pub fn double_init() {
+        crate::println!("[drivers::uart::tests::double_init]");
 
-        // TODO: essentially, I should create a global_alloc impl, so I wont need to pass in balloc
-        // everywhere, especially in places like the drivers which can't be held down by some
-        // strict control flow of the balloc value
+        // the driver is initialised before test cases are called
+        // let driver = CharDriver::init_direct(0x10000000);
+        // assert!(driver.is_ok(), "is_ok failed {driver:?}");
 
-        UartDriver::init_test(&mut b, 0xdeadbead);
-        let driver = super::DRIVER_PTR.load(Ordering::Relaxed);
-        unsafe { assert_eq!((*driver).base_addr, 0xdeadbead) };
+        let driver = CharDriver::init_direct(0x10000000);
+        assert!(driver.is_err(), "is_err failed {driver:?}");
     }
 }

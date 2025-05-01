@@ -8,6 +8,7 @@ extern crate alloc;
 
 mod allocator;
 mod drivers;
+mod kinit;
 mod proc;
 mod riscv;
 mod trap;
@@ -17,6 +18,7 @@ mod writer;
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicBool, Ordering};
 
+use drivers::uart::CharDriver;
 use linked_list_allocator::LockedHeap;
 use riscv::sbi;
 
@@ -35,6 +37,7 @@ unsafe extern "C" {
 
 pub const INTERVAL: usize = 8000000;
 pub const PAGE_SIZE: usize = 0x1000; // 4096
+pub const HEAP1_SIZE: usize = 1024 * 1024 * 1024;
 
 fn is_main_hart() -> bool {
     static INIT_DONE: AtomicBool = AtomicBool::new(false);
@@ -45,9 +48,7 @@ fn is_main_hart() -> bool {
 
 fn init_heap1() {
     let heap_start = unsafe { HEAP1_TOP as *mut u8 };
-    let size = 256 * 1024 * 1024; // 256M
-
-    unsafe { ALLOCATOR.lock().init(heap_start, size / 8) }
+    unsafe { ALLOCATOR.lock().init(heap_start, HEAP1_SIZE) }
 }
 
 #[unsafe(no_mangle)]
@@ -67,39 +68,30 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     init_heap1();
 
     // safety: the fdt_ptr needs to be valid. this is "guaranteed" by OpenSBI
-    let _fdt = unsafe { fdt::Fdt::from_ptr(fdt_ptr as *const u8) }.expect("could not parse fdt");
+    let fdt = unsafe { fdt::Fdt::from_ptr(fdt_ptr as *const u8) }.expect("could not parse fdt");
 
-    {
-        let mut balloc = balloc.lock();
-        let mut mapper = vmem::init(&mut balloc);
+    let mut balloc = balloc.lock();
+    let mut mapper = vmem::init(&mut balloc);
 
-        let heap1 = unsafe { HEAP1_TOP };
-        let size = 256 * 1024 * 1024;
-        let pages = (size / PAGE_SIZE) + 1;
-        mapper.map(heap1, heap1, vmem::Perms::READ_WRITE, pages);
+    let heap1 = unsafe { HEAP1_TOP };
+    let pages = (HEAP1_SIZE / PAGE_SIZE) + 1;
+    mapper.map(heap1, heap1, vmem::Perms::READ_WRITE, pages);
 
-        // uart::UartDriver::init(fdt, &mut mapper).expect("could not init uart driver");
-    }
+    CharDriver::init(fdt, &mut mapper).expect("could not init uart driver");
 
     #[cfg(test)]
     test_main();
 
-    kmain();
-}
-
-fn kmain() -> ! {
-    // safety: cannot be used in critical section
-    unsafe { riscv::interrupt::enable_all() };
-    sbi::time::set_timer(riscv::time() + INTERVAL);
-
-    vmem::inithart();
-
-    for i in alloc::vec![1, 2, 3, 5] {
-        log::info!("reading from a dynamic vec {i}");
+    for i in 0..fdt.cpus().count() {
+        sbi::hsm::start(i, kinit as usize);
     }
 
-    log::info!("Entering loop...");
-    riscv::pauseloop();
+    // TODO: figure out how to reset the call stack and jump to this directly
+    kinit::kinit(hartid);
+}
+
+unsafe extern "C" {
+    fn kinit();
 }
 
 #[panic_handler]
@@ -109,6 +101,12 @@ fn panic(info: &PanicInfo) -> ! {
     #[cfg(test)]
     println!("[TEST FAILED]");
     println!("{}", info);
+
+    #[cfg(test)]
+    {
+        use sbi::srst::*;
+        system_reset(ResetType::Shutdown, ResetReason::Failure);
+    }
 
     riscv::pauseloop();
 }
@@ -126,7 +124,8 @@ pub fn test_runner(tests: &[&dyn Fn()]) -> ! {
         println!("test #{i} [OK]");
     }
 
-    system_reset(ResetType::Shutdown);
+    println!("\n=====| ALL TESTS PASSED |=====");
+    system_reset(ResetType::Shutdown, ResetReason::None);
     riscv::pauseloop();
 }
 

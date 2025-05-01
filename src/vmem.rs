@@ -1,13 +1,9 @@
-//! TODO:
-//! - [ ] Use AtomicPtr instead of AtomicUsize
-//! - [ ] Replace the .expect and panic! with Result
-//! - [ ] Dynamically read the start of the .text section
-
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::{allocator::BitMapAlloc, riscv};
 
-static PAGE_TABLE: AtomicUsize = AtomicUsize::new(0xdead_babe);
+const NO_KPTBL: usize = 0xdead_babe;
+static PAGE_TABLE: AtomicUsize = AtomicUsize::new(NO_KPTBL);
 
 bitflags::bitflags! {
     #[derive(Debug, Clone, Copy)]
@@ -19,6 +15,14 @@ bitflags::bitflags! {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum MapError {
+    #[error("could not dereference pointer {ptr:#x}")]
+    InvalidPtr { ptr: usize },
+    #[error("Remap detected when mapping memory")]
+    Remap,
+}
+
 /// A struct that holds a reference to an allocator and the root page table. This allows drivers to
 /// map pages, without having to worry about anything outside their scope
 pub struct Mapper<'a> {
@@ -27,8 +31,15 @@ pub struct Mapper<'a> {
 }
 
 impl<'a> Mapper<'a> {
-    pub fn map(&mut self, paddr: usize, vaddr: usize, perms: Perms, pages: usize) {
-        map(self.balloc, self.table, paddr, vaddr, perms, pages);
+    pub fn map(
+        &mut self,
+        paddr: usize,
+        vaddr: usize,
+        perms: Perms,
+        pages: usize,
+    ) -> Result<(), MapError> {
+        map(self.balloc, self.table, paddr, vaddr, perms, pages)?;
+        Ok(())
     }
 }
 
@@ -65,29 +76,12 @@ impl PTEntry {
     }
 }
 
-const KERNEL_START: usize = 0x8020_0000;
-
 pub fn init(balloc: &mut BitMapAlloc) -> Mapper {
-    let etext = unsafe { crate::ETEXT };
-    // round it up to 4096 bytes
-    let etext = (etext + 4095) & !4095;
-    let kernel_pages = (etext - KERNEL_START) / 4096;
-
     let tbl_addr = balloc.alloc(1);
     PAGE_TABLE.store(tbl_addr, Ordering::Relaxed);
 
     // safety: we know that table_addr contains 4096 bytes, so this is safe
     let table = unsafe { &mut *(tbl_addr as *mut [PTEntry; 512]) };
-
-    map(
-        balloc,
-        table,
-        KERNEL_START,
-        KERNEL_START,
-        Perms::EXEC,
-        kernel_pages,
-    );
-    map(balloc, table, etext, etext, Perms::READ_WRITE, 200);
 
     Mapper { balloc, table }
 }
@@ -99,7 +93,7 @@ fn map(
     vaddr: usize,
     perms: Perms,
     pages: usize,
-) {
+) -> Result<(), MapError> {
     assert!((vaddr & 4096) % 4096 == 0);
     assert!(pages > 0);
 
@@ -109,21 +103,23 @@ fn map(
         let pa = paddr + offset;
 
         let pte = unsafe {
-            walk(balloc, root, va)
-                .as_mut()
-                .expect("could not dereference pointer")
+            let ptr = walk(balloc, root, va);
+            ptr.as_mut()
+                .ok_or(MapError::InvalidPtr { ptr: ptr as usize })?
         };
 
         // the walk function does not modify the page table entries on level 0. So if the valid bit
         // is flipped, the user has most likely mapped an overlapping region
         if pte.is_valid() {
-            panic!("remap detected, aborting");
+            return Err(MapError::Remap);
         }
 
         pte.set_inner_from_pa(pa);
         pte.set_perms(perms);
         pte.set_valid(true);
     }
+
+    Ok(())
 }
 
 fn walk(
@@ -158,6 +154,7 @@ fn walk(
 
 pub fn inithart() {
     let kptbl = PAGE_TABLE.load(Ordering::Relaxed);
+    assert_ne!(kptbl, NO_KPTBL);
 
     const MODE_SV39: usize = 8usize << 60;
     let satp_entry = MODE_SV39 | (kptbl >> 12);

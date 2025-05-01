@@ -1,3 +1,4 @@
+
 pub mod uart;
 
 #[derive(Debug, thiserror::Error)]
@@ -8,4 +9,9 @@ pub enum DriverError {
     DriverUninitialised,
     #[error("Driver has already been initialised")]
     AlreadyInitialised,
+    #[error("Could not map device address due to error: {error}")]
+    MapError {
+        #[from]
+        error: crate::vmem::MapError,
+    },
 }

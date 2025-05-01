@@ -20,6 +20,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 use drivers::uart::CharDriver;
 use linked_list_allocator::LockedHeap;
+use vmem::{Mapper, Perms};
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
@@ -34,6 +35,7 @@ unsafe extern "C" {
     pub static HEAP1_TOP: usize;
 }
 
+const KERNEL_START: usize = 0x8020_0000;
 pub const INTERVAL: usize = 8000000;
 pub const PAGE_SIZE: usize = 0x1000; // 4096
 pub const HEAP1_SIZE: usize = 1024 * 1024 * 1024;
@@ -72,9 +74,8 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     let mut balloc = balloc.lock();
     let mut mapper = vmem::init(&mut balloc);
 
-    let heap1 = unsafe { HEAP1_TOP };
-    let pages = (HEAP1_SIZE / PAGE_SIZE) + 1;
-    mapper.map(heap1, heap1, vmem::Perms::READ_WRITE, pages);
+    // map the kernel, stack and the heap onto the memory
+    map_vitals(&mut mapper).expect("could not map vital memory");
 
     CharDriver::init(fdt, &mut mapper).expect("could not init uart driver");
     CharDriver::log_addr().unwrap(); // cannot fail
@@ -84,6 +85,26 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
 
     // TODO: figure out how to reset the call stack and jump to this directly
     kinit::kinit(hartid, fdt);
+}
+
+fn map_vitals(mapper: &mut Mapper) -> Result<(), vmem::MapError> {
+    let etext = (unsafe { ETEXT } + 4095) & !4095;
+    let kernel_pages = (etext - KERNEL_START) / 4096;
+
+    let heap1 = unsafe { HEAP1_TOP };
+    let heap1_pages = HEAP1_SIZE / PAGE_SIZE;
+
+    let stack_heap0_size = heap1 - etext;
+    let stack_heap0_pages = stack_heap0_size / PAGE_SIZE;
+
+    // MAP THE KERNEL
+    mapper.map(KERNEL_START, KERNEL_START, Perms::EXEC, kernel_pages)?;
+    // MAP STACK AND HEAP0
+    mapper.map(etext, etext, Perms::READ_WRITE, stack_heap0_pages)?;
+    // MAP HEAP1
+    mapper.map(heap1, heap1, Perms::READ_WRITE, heap1_pages)?;
+
+    Ok(())
 }
 
 #[panic_handler]
@@ -96,7 +117,7 @@ fn panic(info: &PanicInfo) -> ! {
 
     #[cfg(test)]
     {
-        use sbi::srst::*;
+        use riscv::sbi::srst::*;
         system_reset(ResetType::Shutdown, ResetReason::Failure);
     }
 
@@ -105,7 +126,7 @@ fn panic(info: &PanicInfo) -> ! {
 
 #[cfg(test)]
 pub fn test_runner(tests: &[&dyn Fn()]) -> ! {
-    use sbi::srst::*;
+    use riscv::sbi::srst::*;
 
     println!("\n\n");
     println!("Running tests...");

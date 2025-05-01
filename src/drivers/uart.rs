@@ -28,7 +28,7 @@ impl CharDriver {
 
         Self::init_direct(base_addr)?;
 
-        mapper.map(base_addr, base_addr, Perms::READ_WRITE, 1);
+        mapper.map(base_addr, base_addr, Perms::READ_WRITE, 1)?;
 
         Ok(())
     }

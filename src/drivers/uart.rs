@@ -42,18 +42,6 @@ impl CharDriver {
         Ok(())
     }
 
-    pub fn write(str: &str) -> Result<(), DriverError> {
-        let this = Self::get_instance().ok_or(DriverError::DriverUninitialised)?;
-
-        let addr = this.base_addr;
-
-        for c in str.chars() {
-            unsafe { core::ptr::write_volatile(addr as *mut char, c) };
-        }
-
-        Ok(())
-    }
-
     fn get_instance() -> Option<&'static mut Self> {
         unsafe { DRIVER_PTR.load(Ordering::Relaxed).as_mut() }
     }

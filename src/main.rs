@@ -20,7 +20,6 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 use drivers::uart::CharDriver;
 use linked_list_allocator::LockedHeap;
-use riscv::sbi;
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
@@ -78,20 +77,13 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     mapper.map(heap1, heap1, vmem::Perms::READ_WRITE, pages);
 
     CharDriver::init(fdt, &mut mapper).expect("could not init uart driver");
+    CharDriver::log_addr().unwrap(); // cannot fail
 
     #[cfg(test)]
     test_main();
 
-    for i in 0..fdt.cpus().count() {
-        sbi::hsm::start(i, kinit as usize);
-    }
-
     // TODO: figure out how to reset the call stack and jump to this directly
-    kinit::kinit(hartid);
-}
-
-unsafe extern "C" {
-    fn kinit();
+    kinit::kinit(hartid, fdt);
 }
 
 #[panic_handler]

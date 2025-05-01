@@ -7,6 +7,7 @@
 # and not in the order of their ABI names (e.g. saving t0-6 then a0-7 ...)
 # TODO: save floating point registers
 ktrapvec:
+allocspace:
     addi sp, sp, -8*30 # -240
 save:
     sd ra, 0(sp)
@@ -75,6 +76,7 @@ load:
     ld t4, 224(sp)
     ld t5, 232(sp)
     ld t6, 240(sp)
-    addi sp, sp, 256
+deallocspace:
+    addi sp, sp, 8*30 # 240
 ret_to_supervisor:
     sret

@@ -42,14 +42,10 @@ pub mod hsm {
     const EID: usize = 0x48534D;
     const FID_HART_START: usize = 0;
 
-    unsafe extern "C" {
-        fn _start();
-    }
-
-    pub fn start(hartid: usize) {
+    pub fn start(hartid: usize, ra: usize) {
         let args = Args {
             a0: hartid,
-            a1: _start as usize,
+            a1: ra,
             ..Default::default()
         };
 
@@ -95,19 +91,23 @@ pub mod srst {
     const EID: usize = 0x53525354;
     const FID_SYSTEM_RESET: usize = 0;
 
-    #[repr(usize)]
+    #[repr(u32)]
     pub enum ResetType {
         Shutdown = 0,
         ColdReboot = 1,
         WarnReboot = 2,
     }
 
-    pub fn system_reset(reset_type: ResetType) {
-        let reason = 0x00000001; // no reason
+    #[repr(u32)]
+    pub enum ResetReason {
+        None = 0,
+        Failure = 1,
+    }
 
+    pub fn system_reset(reset_type: ResetType, reason: ResetReason) {
         let args = Args {
             a0: reset_type as usize,
-            a1: reason,
+            a1: reason as usize,
             ..Default::default()
         };
 

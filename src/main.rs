@@ -16,7 +16,6 @@ mod vmem;
 mod writer;
 
 use core::panic::PanicInfo;
-use core::sync::atomic::{AtomicBool, Ordering};
 
 use drivers::uart::CharDriver;
 use linked_list_allocator::LockedHeap;
@@ -39,13 +38,7 @@ const KERNEL_START: usize = 0x8020_0000;
 pub const INTERVAL: usize = 8000000;
 pub const PAGE_SIZE: usize = 0x1000; // 4096
 pub const HEAP1_SIZE: usize = 1024 * 1024 * 1024;
-
-fn is_main_hart() -> bool {
-    static INIT_DONE: AtomicBool = AtomicBool::new(false);
-    INIT_DONE
-        .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-        .is_ok()
-}
+pub const STACK_PAGES: usize = 1;
 
 fn init_heap1() {
     let heap_start = unsafe { HEAP1_TOP as *mut u8 };
@@ -55,11 +48,6 @@ fn init_heap1() {
 #[unsafe(no_mangle)]
 extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     println!("\n\n\n^w^ welcome to my operating system");
-
-    assert_eq!(size_of::<usize>(), 64 / 8, "we only support 64-bit");
-    if !is_main_hart() {
-        todo!("multi threading");
-    }
 
     writer::init_log();
     log::debug!("HART#{hartid}");
@@ -83,11 +71,12 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     #[cfg(test)]
     test_main();
 
-    // TODO: figure out how to reset the call stack and jump to this directly
+    kinit::pre_kinit(&mut balloc, fdt);
     kinit::kinit(hartid, fdt);
 }
 
 fn map_vitals(mapper: &mut Mapper) -> Result<(), vmem::MapError> {
+    // we are rounding up the etext
     let etext = (unsafe { ETEXT } + 4095) & !4095;
     let kernel_pages = (etext - KERNEL_START) / 4096;
 
@@ -99,6 +88,9 @@ fn map_vitals(mapper: &mut Mapper) -> Result<(), vmem::MapError> {
 
     // MAP THE KERNEL
     mapper.map(KERNEL_START, KERNEL_START, Perms::EXEC, kernel_pages)?;
+
+    // TODO: map the heap pages during allocation
+
     // MAP STACK AND HEAP0
     mapper.map(etext, etext, Perms::READ_WRITE, stack_heap0_pages)?;
     // MAP HEAP1

@@ -19,6 +19,29 @@ _start:
     csrrs zero, sstatus, t0
 
     call start
+    call infloop
+
+.global _bootstrap_core
+# a0: hartid
+# a1: stack pointer (we pass this)
+_bootstrap_core:
+    mv sp, a1
+
+    la t0, ktrapvec
+    csrw stvec, t0
+
+    li t0, 0x222
+    csrw sie, t0
+
+    li t0, (1 << 1)
+    csrrs zero, sstatus, t0
+
+    call bootstrap_core
+    call infloop
+
+# fallback in case kernel tries to return back
+infloop:
+    j .
 
 # we also create global symbols to access the symbols we defined in linker.ld
 .section .rodata

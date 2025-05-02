@@ -35,8 +35,16 @@ pub fn pauseloop() -> ! {
 ///
 /// Provides a hint to the implementation that the current hart can be stalled until an interrupt might need servicing.
 /// The WFI instruction is just a hint, and a legal implementation is to implement WFI as a NOP.
+#[inline]
 pub fn wfi() {
     unsafe { asm!("wfi", options(nomem, nostack)) };
+}
+
+#[inline]
+pub fn wfiloop() {
+    loop {
+        wfi();
+    }
 }
 
 /// `TIME` instruction wrapper

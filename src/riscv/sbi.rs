@@ -8,11 +8,20 @@ struct Args {
     a5: usize,
 }
 
-fn ecall(args: Args, fid: usize, eid: usize) {
+#[derive(Debug)]
+struct EcallRet {
+    a: usize,
+    b: usize,
+}
+
+fn ecall(mut args: Args, fid: usize, eid: usize) -> EcallRet {
+    let mut a = args.a0;
+    let mut b = args.a1;
+
     unsafe {
         core::arch::asm!("ecall",
-            in("a0") args.a0,
-            in("a1") args.a1,
+            inout("a0") a,
+            inout("a1") b,
             in("a2") args.a2,
             in("a3") args.a3,
             in("a4") args.a4,
@@ -20,7 +29,9 @@ fn ecall(args: Args, fid: usize, eid: usize) {
             in("a6") fid,
             in("a7") eid,
         );
-    }
+    };
+
+    EcallRet { a, b }
 }
 
 pub mod hsm {
@@ -39,17 +50,20 @@ pub mod hsm {
     //! | 6        | RESUME_PENDING | An interrupt or platform specific hardware event has caused the hart to resume normal execution from the SUSPENDED state and the SBI implementation is still working to get the hart in the STARTED state. |
 
     use super::*;
+
     const EID: usize = 0x48534D;
     const FID_HART_START: usize = 0;
 
-    pub fn start(hartid: usize, ra: usize) {
+    pub fn start(hartid: usize, ra: usize, a2: usize) {
         let args = Args {
             a0: hartid,
             a1: ra,
+            a2,
             ..Default::default()
         };
 
-        ecall(args, FID_HART_START, EID);
+        let ret = ecall(args, FID_HART_START, EID);
+        //crate::println!("{ret:?}");
     }
 }
 

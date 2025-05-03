@@ -23,7 +23,3 @@ MACHINE := "virt,aclint=on,aia=aplic-imsic"
 [private]
 @runner kernel *FLAGS:
     .cargo/runner.sh {{ kernel }} {{ FLAGS }}
-
-[working-directory: "target"]
-@build-uboot:
-    echo "$PWD"

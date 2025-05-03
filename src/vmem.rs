@@ -154,7 +154,7 @@ fn walk(
 
 pub fn inithart() {
     let kptbl = PAGE_TABLE.load(Ordering::Relaxed);
-    assert_ne!(kptbl, NO_KPTBL);
+    assert_ne!(kptbl, NO_KPTBL, "vmem is not initialised");
 
     const MODE_SV39: usize = 8usize << 60;
     let satp_entry = MODE_SV39 | (kptbl >> 12);
@@ -162,8 +162,6 @@ pub fn inithart() {
     riscv::sfence_vma();
     riscv::satp::write(satp_entry);
     riscv::sfence_vma();
-
-    log::debug!("satp set to value: {satp_entry:#x}");
 }
 
 #[inline]

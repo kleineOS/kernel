@@ -14,15 +14,15 @@ pub fn pre_kinit(balloc: &mut BitMapAlloc, fdt: fdt::Fdt) {
         let addr = balloc.alloc(STACK_PAGES);
         // the address we are returned is at the top of the allocated space, we need to go lower
         let stack_bottom = addr + STACK_SIZE;
-        sbi::hsm::start(id, _bootstrap_core as usize, stack_bottom);
+        sbi::hsm::start(id, _start as usize, stack_bottom);
     }
 }
 
-pub fn kinit(hartid: usize, _fdt: fdt::Fdt) -> ! {
+pub fn kinit(hartid: usize) -> ! {
     // safety: cannot be used in critical section
     unsafe { riscv::interrupt::enable_all() };
+    crate::trap::reset_timer();
 
-    sbi::time::set_timer(riscv::time() + INTERVAL);
     vmem::inithart();
 
     log::info!("[HART#{hartid}] Entering loop...");
@@ -42,5 +42,5 @@ extern "C" fn bootstrap_core() {
 }
 
 unsafe extern "C" {
-    fn _bootstrap_core();
+    fn _start();
 }

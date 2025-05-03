@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 /// A simple data structure that holds SIZE * 8 bits of data. Stores more data than a simple array
 /// of bools by using bitwise operations to fully utilise an 8 bit wide memory address.
 ///
@@ -116,7 +114,6 @@ mod tests {
 
     #[test_case]
     fn test_len() {
-        let addr = unsafe { crate::HEAP0_TOP };
         let bm = unsafe { BitMap::<PAGE_SIZE>::zeroed(crate::HEAP0_TOP) };
         assert_eq!(bm.len(), PAGE_SIZE * 8);
     }

@@ -7,12 +7,9 @@ mod bitmap;
 mod global_impl;
 mod tiered;
 
-use core::fmt::Display;
-
 use spin::Mutex;
 
 use crate::PAGE_SIZE;
-pub use global_impl::GBMAlloc;
 
 #[derive(Debug)]
 pub struct BitMapAlloc {

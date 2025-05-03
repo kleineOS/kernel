@@ -72,7 +72,7 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     test_main();
 
     kinit::pre_kinit(&mut balloc, fdt);
-    kinit::kinit(hartid, fdt);
+    kinit::kinit(hartid);
 }
 
 fn map_vitals(mapper: &mut Mapper) -> Result<(), vmem::MapError> {

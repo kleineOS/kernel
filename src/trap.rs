@@ -32,7 +32,7 @@ fn handle_exception(exception: Exception, frame: &riscv::Frame) {
     riscv::pauseloop();
 }
 
-fn reset_timer() {
+pub fn reset_timer() {
     // log::debug!("timer reset");
     sbi::time::set_timer(riscv::time() + crate::INTERVAL)
 }

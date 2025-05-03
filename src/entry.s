@@ -1,47 +1,33 @@
-# the rust compiler complains if I dont include this
-.attribute arch, "rv64gc"
-.option norvc
-
 # the code in here was annoying to write in rust, this is much cleaner and easier
 .section .text.boot
 .global _start
 _start:
-    la t0, __stack_bottom
-    mv sp, t0
+    # load the first 32 bits from the addr stored in a1
+    lwu t0, 0(a1)
+    li t1, 0xedfe0dd0 # the magic value for fdt parsing
 
-    la t0, ktrapvec
-    csrw stvec, t0
+    bne t0, t1, alloced_stack
+    j static_stack
 
-    li t0, 0x222
-    csrw sie, t0
-
-    li t0, (1 << 1)
-    csrrs zero, sstatus, t0
-
-    call start
-    call infloop
-
-.global _bootstrap_core
-# a0: hartid
-# a1: stack pointer (we pass this)
-_bootstrap_core:
+static_stack:
+    la sp, __stack_bottom
+    j setstvec
+alloced_stack:
     mv sp, a1
+    j setstvec
 
-    la t0, ktrapvec
-    csrw stvec, t0
-
-    li t0, 0x222
-    csrw sie, t0
-
-    li t0, (1 << 1)
-    csrrs zero, sstatus, t0
-
-    call bootstrap_core
-    call infloop
-
-# fallback in case kernel tries to return back
-infloop:
-    j .
+setstvec:
+    la t2, ktrapvec
+    csrw stvec, t2
+setsie:
+    li t2, 0x222
+    csrw sie, t2
+setsstatus:
+    li t2, (1 << 1)
+    csrrs zero, sstatus, t2
+callstart:
+    bne t0, t1, bootstrap_core
+    call start
 
 # we also create global symbols to access the symbols we defined in linker.ld
 .section .rodata

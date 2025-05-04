@@ -7,3 +7,7 @@
 # these configs are specific to me
 .lldbinit
 .gdbinit
+
+# disk files
+*.img
+*.qcow2

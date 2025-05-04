@@ -2,7 +2,7 @@
 
 use crate::allocator::BitMapAlloc;
 use crate::riscv::{self, sbi};
-use crate::{INTERVAL, PAGE_SIZE, STACK_PAGES, vmem};
+use crate::{PAGE_SIZE, STACK_PAGES, vmem};
 
 const STACK_SIZE: usize = STACK_PAGES * PAGE_SIZE;
 
@@ -18,7 +18,8 @@ pub fn pre_kinit(balloc: &mut BitMapAlloc, fdt: fdt::Fdt) {
     }
 }
 
-pub fn kinit(hartid: usize) -> ! {
+#[unsafe(no_mangle)]
+pub extern "C" fn kinit(hartid: usize) -> ! {
     // safety: cannot be used in critical section
     unsafe { riscv::interrupt::enable_all() };
     crate::trap::reset_timer();
@@ -27,18 +28,6 @@ pub fn kinit(hartid: usize) -> ! {
 
     log::info!("[HART#{hartid}] Entering loop...");
     riscv::pauseloop();
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn bootstrap_core() {
-    // safety: cannot be used in critical section
-    unsafe { riscv::interrupt::enable_all() };
-
-    sbi::time::set_timer(riscv::time() + INTERVAL);
-    vmem::inithart();
-
-    log::info!("Entering wfi loop...");
-    riscv::wfiloop();
 }
 
 unsafe extern "C" {

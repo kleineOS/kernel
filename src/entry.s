@@ -1,10 +1,10 @@
-# the code in here was annoying to write in rust, this is much cleaner and easier
 .section .text.boot
 .global _start
 _start:
     # load the first 32 bits from the addr stored in a1
     lwu t0, 0(a1)
-    li t1, 0xedfe0dd0 # the magic value for fdt parsing
+    # the magic value for fdt parsing, be encoded
+    li t1, 0xedfe0dd0
 
     bne t0, t1, alloced_stack
     j static_stack
@@ -25,8 +25,9 @@ setsie:
 setsstatus:
     li t2, (1 << 1)
     csrrs zero, sstatus, t2
+
 callstart:
-    bne t0, t1, bootstrap_core
+    bne t0, t1, kinit
     call start
 
 # we also create global symbols to access the symbols we defined in linker.ld

@@ -16,6 +16,10 @@ QEMU_FLAGS=(
     -mon    chardev=char0
 )
 
+if [[ ${DISK:-"unset"} != "unset" ]]; then
+    QEMU_FLAGS+=(-drive "file=$DISK,if=virtio,format=raw")
+fi
+
 case $flags in
     "default")
         $QEMU "${QEMU_FLAGS[@]}"

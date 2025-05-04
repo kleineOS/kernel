@@ -1,4 +1,4 @@
-
+pub mod pci;
 pub mod uart;
 
 #[derive(Debug, thiserror::Error)]

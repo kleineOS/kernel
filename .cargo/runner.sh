@@ -6,11 +6,16 @@ flags="${2:-default}"
 
 QEMU_FLAGS=(
     -nographic
+
     -machine $MACHINE
+
     -bios   default
     -kernel $kernel
+#   -kernel target/uboot/u-boot
+
     -smp    $CORE_COUNT
     -m      $MEM_SIZE
+
     -chardev stdio,id=char0,mux=on,logfile=target/serial.log,signal=on
     -serial chardev:char0
     -mon    chardev=char0

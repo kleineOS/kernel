@@ -1,6 +1,5 @@
-set export
+set export := true
 
-DISK := "disk.img"
 # tools we use (can differ on other distros)
 QEMU := "qemu-system-riscv64"
 DEBUGGER := "rust-gdb"
@@ -10,6 +9,12 @@ CORE_COUNT := "4"
 MEM_SIZE := "256M"
 MACHINE := "virt,aclint=on,aia=aplic-imsic"
 
+UBOOT_URL := "https://ftp.denx.de/pub/u-boot/u-boot-2025.04.tar.bz2"
+UBOOT_TAR := "u-boot-2025.04.tar.bz2"
+UBOOT_DIR := "u-boot-2025.04"
+OPENSBI := "/usr/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin"
+CROSS_COMPILE := "riscv64-linux-gnu-"
+
 @default: run-dbg
 
 @run-dbg *FLAGS:
@@ -18,13 +23,13 @@ MACHINE := "virt,aclint=on,aia=aplic-imsic"
 
 # default runner for cargo, not meant to be used directly
 [private]
-@runner kernel *FLAGS: create-disk
+@runner kernel *FLAGS: create-disk build-uboot
     .cargo/runner.sh {{ kernel }} {{ FLAGS }}
 
 # create a 64MiB fat32 disk image
-@create-disk:
+create-disk:
     #!/usr/bin/env bash
-    if [[ ! -f "$DISK" ]]; then
+    if [[ ! -f disk.img ]]; then
         dd if=/dev/zero of=disk.img bs=1M count=64
         mkfs.fat -F32 disk.img
         # copying this for testing reasons
@@ -35,3 +40,28 @@ MACHINE := "virt,aclint=on,aia=aplic-imsic"
 # view the contents of the created disk
 @ls-disk:
     mdir -i disk.img ::
+
+# build u-boot
+[working-directory: "target/uboot"]
+build-uboot: (build-dir "uboot")
+    #!/usr/bin/env bash
+    if [[ ! -f u-boot-spl.bin && ! -f u-boot.itb ]]; then
+        test -f $UBOOT_TAR || wget $UBOOT_TAR
+        test -d $UBOOT_DIR || tar xvf $UBOOT_TAR
+
+        cd $UBOOT_DIR
+        make qemu-riscv64_spl_defconfig
+        make -j12
+
+        cp spl/u-boot-spl.bin ..
+        cp u-boot.itb ..
+    fi
+
+[working-directory: "target/uboot"]
+clean-uboot:
+    rm u-boot-spl.bin u-boot.itb
+
+# depend on a sub-directory of the build folder
+[private]
+@build-dir DIR:
+    mkdir -p target/{{DIR}}

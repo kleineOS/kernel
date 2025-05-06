@@ -9,6 +9,8 @@ pub enum DriverError {
     DriverUninitialised,
     #[error("Driver has already been initialised")]
     AlreadyInitialised,
+    #[error("Unimplimented functionality")]
+    Unimplimented,
     #[error("Could not map device address due to error: {error}")]
     MapError {
         #[from]

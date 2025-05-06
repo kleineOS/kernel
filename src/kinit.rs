@@ -26,7 +26,7 @@ pub extern "C" fn kinit(hartid: usize) -> ! {
 
     vmem::inithart();
 
-    log::info!("[HART#{hartid}] Entering loop...");
+    // log::info!("[HART#{hartid}] Entering loop...");
     riscv::pauseloop();
 }
 

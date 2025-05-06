@@ -1,21 +1,5 @@
 set export := true
 
-# tools we use (can differ on other distros)
-QEMU := "qemu-system-riscv64"
-DEBUGGER := "rust-gdb"
-OBJDUMP := "riscv64-linux-gnu-objdump"
-# VM config
-CORE_COUNT := "4"
-MEM_SIZE := "256M"
-MACHINE := "virt,aclint=on,aia=aplic-imsic,accel=tcg"
-DISK := "disk.img"
-
-UBOOT_URL := "https://ftp.denx.de/pub/u-boot/u-boot-2025.04.tar.bz2"
-UBOOT_TAR := "u-boot-2025.04.tar.bz2"
-UBOOT_DIR := "u-boot-2025.04"
-OPENSBI := "/usr/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin"
-CROSS_COMPILE := "riscv64-linux-gnu-"
-
 @default: run-dbg
 
 @run-dbg *FLAGS:
@@ -72,3 +56,24 @@ clean-uboot:
 [private]
 @build-tools:
     which wget tar nproc dd mkfs.fat mcopy swig $QEMU $OBJDUMP $OBJDUMP > /dev/null
+
+# tools we use (can differ on other distros)
+QEMU := "qemu-system-riscv64"
+DEBUGGER := "rust-gdb"
+OBJDUMP := "riscv64-linux-gnu-objdump"
+# VM config
+CORE_COUNT := "4"
+MEM_SIZE := "256M"
+MACHINE := "virt,aclint=on,aia=aplic-imsic,accel=tcg"
+
+# setting a different disk will NOT actually change the target disk. I have
+# hardcoded "disk.img" because I do not want to deal with accidental dd
+# (destroy disk) operations. HOWEVER, you can do `DISK= cargo run` to disable
+# the mounting of this disk to the VM
+DISK := env("DISK", "disk.img")
+
+UBOOT_URL := "https://ftp.denx.de/pub/u-boot/u-boot-2025.04.tar.bz2"
+UBOOT_TAR := "u-boot-2025.04.tar.bz2"
+UBOOT_DIR := "u-boot-2025.04"
+OPENSBI := "/usr/share/qemu/opensbi-riscv64-generic-fw_dynamic.bin"
+CROSS_COMPILE := "riscv64-linux-gnu-"

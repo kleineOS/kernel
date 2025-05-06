@@ -17,7 +17,7 @@ mod writer;
 
 use core::panic::PanicInfo;
 
-use drivers::{pci::PciDriver, uart::CharDriver};
+use drivers::{pci::Pci, uart::CharDriver, virtio};
 use linked_list_allocator::LockedHeap;
 use vmem::{Mapper, Perms};
 
@@ -68,7 +68,8 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     CharDriver::init(fdt, &mut mapper).expect("could not init uart driver");
     CharDriver::log_addr().unwrap(); // cannot fail
 
-    PciDriver::init(fdt, &mut mapper).expect("could not init pci driver");
+    let pci_devices = Pci::enumerate(fdt, &mut mapper).expect("could not init pci driver");
+    virtio::init(&pci_devices);
 
     #[cfg(test)]
     test_main();

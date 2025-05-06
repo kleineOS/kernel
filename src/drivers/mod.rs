@@ -1,7 +1,9 @@
 pub mod pci;
 pub mod uart;
+pub mod virtio;
 
 #[derive(Debug, thiserror::Error)]
+#[allow(unused)]
 pub enum DriverError {
     #[error("Device not found")]
     DeviceNotFound,

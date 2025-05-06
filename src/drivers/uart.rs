@@ -36,8 +36,7 @@ impl CharDriver {
     pub fn log_addr() -> Result<(), DriverError> {
         let this = Self::get_instance().ok_or(DriverError::DriverUninitialised)?;
 
-        let addr = this.base_addr;
-        log::info!("uart driver base_addr={addr:#x}",);
+        let _addr = this.base_addr;
 
         Ok(())
     }

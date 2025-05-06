@@ -7,7 +7,8 @@ OBJDUMP := "riscv64-linux-gnu-objdump"
 # VM config
 CORE_COUNT := "4"
 MEM_SIZE := "256M"
-MACHINE := "virt,aclint=on,aia=aplic-imsic"
+MACHINE := "virt,aclint=on,aia=aplic-imsic,accel=tcg"
+DISK := "disk.img"
 
 UBOOT_URL := "https://ftp.denx.de/pub/u-boot/u-boot-2025.04.tar.bz2"
 UBOOT_TAR := "u-boot-2025.04.tar.bz2"
@@ -27,8 +28,9 @@ CROSS_COMPILE := "riscv64-linux-gnu-"
     .cargo/runner.sh {{ kernel }} {{ FLAGS }}
 
 # create a 64MiB fat32 disk image
-create-disk:
+create-disk: build-tools
     #!/usr/bin/env bash
+    # I will not use global variables here, dont want to accidently dd /dev/sda
     if [[ ! -f disk.img ]]; then
         dd if=/dev/zero of=disk.img bs=1M count=64
         mkfs.fat -F32 disk.img
@@ -43,18 +45,19 @@ create-disk:
 
 # build u-boot
 [working-directory: "target/uboot"]
-build-uboot: (build-dir "uboot")
+build-uboot: build-tools (build-dir "uboot")
     #!/usr/bin/env bash
-    if [[ ! -f u-boot-spl.bin && ! -f u-boot.itb ]]; then
-        test -f $UBOOT_TAR || wget $UBOOT_TAR
+    if [[ ! -f u-boot-spl.bin || ! -f u-boot.itb || ! -f u-boot ]]; then
+        test -f $UBOOT_TAR || wget $UBOOT_URL
         test -d $UBOOT_DIR || tar xvf $UBOOT_TAR
 
         cd $UBOOT_DIR
         make qemu-riscv64_spl_defconfig
-        make -j12
+        make -j$(nproc)
 
         cp spl/u-boot-spl.bin ..
         cp u-boot.itb ..
+        cp u-boot ..
     fi
 
 [working-directory: "target/uboot"]
@@ -65,3 +68,7 @@ clean-uboot:
 [private]
 @build-dir DIR:
     mkdir -p target/{{DIR}}
+
+[private]
+@build-tools:
+    which wget tar nproc dd mkfs.fat mcopy swig $QEMU $OBJDUMP $OBJDUMP > /dev/null

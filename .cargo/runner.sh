@@ -4,6 +4,11 @@ set -euo pipefail
 kernel=$1
 flags="${2:-default}"
 
+if [[ $flags = "uboot" ]]; then
+    kernel="target/uboot/u-boot"
+    flags="default"
+fi
+
 QEMU_FLAGS=(
     -nographic
 
@@ -11,7 +16,6 @@ QEMU_FLAGS=(
 
     -bios   default
     -kernel $kernel
-#   -kernel target/uboot/u-boot
 
     -smp    $CORE_COUNT
     -m      $MEM_SIZE

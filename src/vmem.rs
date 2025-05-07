@@ -12,6 +12,7 @@ bitflags::bitflags! {
         // WRITE without READ is an invalid state
         const READ_WRITE = Self::READ.bits() | 1 << 2 ;
         const EXEC = 1 << 3;
+        const USER = 1 << 4;
     }
 }
 

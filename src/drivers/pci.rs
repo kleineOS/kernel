@@ -89,6 +89,12 @@ pub struct Device {
     pub header_type: u16,
 }
 
+impl Device {
+    fn new() -> Option<Self> {
+        None
+    }
+}
+
 impl Display for Device {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(

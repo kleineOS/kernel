@@ -18,8 +18,9 @@ mod writer;
 
 use core::panic::PanicInfo;
 
-use drivers::uart::CharDriver;
+use drivers::{uart::CharDriver, virtio};
 use linked_list_allocator::LockedHeap;
+use pci::PcieManager;
 use vmem::{Mapper, Perms};
 
 #[global_allocator]
@@ -69,7 +70,8 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     CharDriver::init(fdt, &mut mapper).expect("could not init uart driver");
     CharDriver::log_addr().unwrap(); // cannot fail
 
-    pci::init(fdt, &mut mapper);
+    // we setup pcie subsystem along with some basic drivers
+    setup_pcie(fdt, &mut mapper);
 
     #[cfg(test)]
     test_main();
@@ -100,6 +102,20 @@ fn map_vitals(mapper: &mut Mapper) -> Result<(), vmem::MapError> {
     mapper.map(heap1, heap1, Perms::READ_WRITE, heap1_pages)?;
 
     Ok(())
+}
+
+fn setup_pcie(fdt: fdt::Fdt, mapper: &mut Mapper) {
+    // first we fetch the base address of the pcie configuration interface
+    let ecam = pci::init(fdt, mapper).expect("could not initialise pci");
+
+    // then we create a manager to handle initialisation of PCIe drivers
+    let mut pcie_manager = PcieManager::new(ecam);
+
+    // the following section needs a callback that ANY driver can call from the kernel
+    let driver = virtio::BlkDriver::new();
+    pcie_manager.register_driver(&driver);
+
+    pcie_manager.init_drivers();
 }
 
 #[panic_handler]

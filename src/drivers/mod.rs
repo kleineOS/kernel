@@ -1,4 +1,5 @@
 pub mod uart;
+pub mod virtio;
 
 #[derive(Debug, thiserror::Error)]
 #[allow(unused)]

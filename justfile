@@ -64,7 +64,7 @@ OBJDUMP := "riscv64-linux-gnu-objdump"
 # VM config
 CORE_COUNT := "4"
 MEM_SIZE := "256M"
-MACHINE := "virt,aclint=on,aia=aplic-imsic,accel=tcg"
+MACHINE := "virt"
 
 # setting a different disk will NOT actually change the target disk. I have
 # hardcoded "disk.img" because I do not want to deal with accidental dd

@@ -1,4 +1,5 @@
 //! PCIe subsystem for the kleineOS kernel
+//! current version: 0.1-dev
 
 use core::ptr::read_volatile;
 
@@ -11,7 +12,7 @@ use crate::vmem::{Mapper, Perms};
 const COMPATIBLE: &[&str] = &["pci-host-ecam-generic"];
 
 pub trait PciDeviceInit {
-    // pair of (vendor_id, device_id) that this device is for
+    /// pair of (vendor_id, device_id) that this device is for
     fn id_pair(&self) -> (u16, u16);
     fn init(&self, header: PcieEcamHeader, ecam: PcieEcam);
 }
@@ -70,6 +71,8 @@ impl PcieEcam {
         Self::read_word(self, bus, device, 0, register * 4)
     }
 
+    /// get device info that is common accross most PCIe devices
+    /// going to be merged with get_more_dev_info in the next version of this subsystem
     pub fn get_common_dev_info(self, bus: u8, device: u8) -> Option<PcieEcamHeader> {
         // register 0x0: device_id ++ vendor_id
         let cache = self.read_register(bus, device, 0x0);
@@ -114,6 +117,9 @@ impl PcieEcam {
             header_type,
             latency_timer,
             cache_line_size,
+
+            bus_nr: bus,
+            device_nr: device,
         };
 
         Some(header)
@@ -135,6 +141,84 @@ pub struct PcieEcamHeader {
     pub header_type: u8,
     pub latency_timer: u8,
     pub cache_line_size: u8,
+    // --- idk if this should be here ---
+    pub bus_nr: u8,
+    pub device_nr: u8,
+}
+
+#[derive(Debug)]
+#[allow(unused)]
+pub struct GeneralDevInfo {
+    pub base_addrs: [u32; 6],
+    pub subsystem_id: u16,
+    pub cardbus_cis_ptr: u32,
+    pub subsystem_vendor_id: u16,
+    pub exp_rom_base_addr: u32,
+    pub capabilities_ptr: u8,
+    pub max_latency: u8,
+    pub min_grant: u8,
+    pub interrupt_pin: u8,
+    pub interrupt_line: u8,
+}
+
+#[derive(Debug)]
+pub enum MoreDevInfo {
+    GeneralDev(GeneralDevInfo),
+    Pci2PciBridge,
+    Pci2CardBusBridge,
+}
+
+impl PcieEcamHeader {
+    fn read_general_dev_info(self, ecam: PcieEcam) -> GeneralDevInfo {
+        let bus = self.bus_nr;
+        let device = self.device_nr;
+
+        let mut base_addrs = [0; 6];
+        base_addrs
+            .iter_mut()
+            .enumerate()
+            .for_each(|(i, value)| *value = ecam.read_register(bus, device, 0x4 + (i as u8)));
+
+        let cardbus_cis_ptr = ecam.read_register(bus, device, 0xa);
+
+        let cache = ecam.read_register(bus, device, 0xb);
+        let subsystem_id = (cache >> 16) as u16;
+        let subsystem_vendor_id = cache as u16;
+
+        let exp_rom_base_addr = ecam.read_register(bus, device, 0xc);
+
+        let capabilities_ptr = ecam.read_register(bus, device, 0xd) as u8;
+
+        let cache = ecam.read_register(bus, device, 0xf);
+        let max_latency = (cache >> 24) as u8;
+        let min_grant = (cache >> 16) as u8;
+        let interrupt_pin = (cache >> 8) as u8;
+        let interrupt_line = cache as u8;
+
+        GeneralDevInfo {
+            base_addrs,
+            cardbus_cis_ptr,
+            subsystem_id,
+            subsystem_vendor_id,
+            exp_rom_base_addr,
+            capabilities_ptr,
+            max_latency,
+            min_grant,
+            interrupt_pin,
+            interrupt_line,
+        }
+    }
+
+    /// get device info based on the header type
+    /// going to be merged with get_common_dev_info in the next version of this subsystem
+    pub fn get_more_dev_info(self, ecam: PcieEcam) -> MoreDevInfo {
+        match self.header_type {
+            0x0 => MoreDevInfo::GeneralDev(self.read_general_dev_info(ecam)),
+            0x1 => MoreDevInfo::Pci2PciBridge,
+            0x2 => MoreDevInfo::Pci2CardBusBridge,
+            _ => unreachable!(),
+        }
+    }
 }
 
 pub fn init(fdt: fdt::Fdt, mapper: &mut Mapper) -> Result<PcieEcam, DriverError> {
@@ -163,4 +247,12 @@ fn enumerate(ecam: PcieEcam) -> Vec<PcieEcamHeader> {
     }
 
     devices
+}
+
+#[cfg(test)]
+mod tests {
+    #[test_case]
+    fn todo() {
+        todo!("write test cases for PCIe Manager");
+    }
 }

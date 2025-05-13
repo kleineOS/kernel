@@ -11,3 +11,6 @@
 # disk files
 *.img
 *.qcow2
+
+# generated objects files
+*.o

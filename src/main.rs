@@ -115,7 +115,7 @@ fn setup_pcie(fdt: fdt::Fdt, mapper: &mut Mapper) {
     let driver = virtio::BlkDriver::new();
     pcie_manager.register_driver(&driver);
 
-    pcie_manager.init_drivers();
+    pcie_manager.init_drivers(fdt);
 }
 
 #[panic_handler]

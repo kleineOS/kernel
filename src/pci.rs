@@ -14,7 +14,7 @@ const COMPATIBLE: &[&str] = &["pci-host-ecam-generic"];
 pub trait PciDeviceInit {
     /// pair of (vendor_id, device_id) that this device is for
     fn id_pair(&self) -> (u16, u16);
-    fn init(&self, header: PcieEcamHeader, ecam: PcieEcam);
+    fn init(&self, header: PcieEcamHeader, ecam: PcieEcam, fdt: fdt::Fdt);
 }
 
 /// This struct is used for passing the correct [DeviceStub] to the correct PcieDriver
@@ -41,11 +41,11 @@ impl<'a> PcieManager<'a> {
         self.drivers.insert(pair, driver);
     }
 
-    pub fn init_drivers(self) {
+    pub fn init_drivers(self, fdt: fdt::Fdt) {
         for device in self.devices.iter() {
             let id_pair = (device.vendor_id, device.device_id);
             if let Some(driver) = self.drivers.get(&id_pair) {
-                driver.init(*device, self.ecam);
+                driver.init(*device, self.ecam, fdt);
             }
         }
     }
@@ -56,16 +56,31 @@ pub struct PcieEcam {
     base_addr: usize,
 }
 
+// macro_rules! pcie_register {
+//     ($x:ident, $offset:expr, $type:ty) => {
+//         pub fn $x(self, bus: u8, device: u8) -> $type {
+//             self.read_word(bus, device, 0, $offset) as $type
+//         }
+//     };
+// }
+
 impl PcieEcam {
-    /// Read 32 bits via the PCIe ECAM interface
-    pub fn read_word(self, bus: u8, device: u8, func: u8, offset: u8) -> u32 {
-        let word_addr = self.base_addr
+    pub fn address(self, bus: u8, device: u8, func: u8) -> usize {
+        self.base_addr
             + ((bus as usize) << 20)
             + ((device as usize) << 15)
             + ((func as usize) << 12)
-            + ((offset as usize) & 0xFC); // align to 4-bit byte boundry
+    }
+
+    /// Read 32 bits via the PCIe ECAM interface
+    pub fn read_word(self, bus: u8, device: u8, func: u8, offset: u8) -> u32 {
+        // add offset and align to 4-bit byte boundry
+        let word_addr = self.address(bus, device, func) + ((offset as usize) & 0xFC);
         unsafe { read_volatile(word_addr as *const u32) }
     }
+
+    // pcie_register!(read_device_id, 0x0, u16);
+    // pcie_register!(read_vendor_id, 0x2, u16);
 
     pub fn read_register(self, bus: u8, device: u8, register: u8) -> u32 {
         Self::read_word(self, bus, device, 0, register * 4)
@@ -169,15 +184,21 @@ pub enum MoreDevInfo {
 }
 
 impl PcieEcamHeader {
+    pub fn status_capabilities_list(self) -> bool {
+        let mask = 0b1000000000010000;
+        let bit = (self.status & mask) >> 4;
+        assert!(bit <= 1, "we should have extracted a single bit {bit}");
+        bit == 1
+    }
+
     fn read_general_dev_info(self, ecam: PcieEcam) -> GeneralDevInfo {
         let bus = self.bus_nr;
         let device = self.device_nr;
 
         let mut base_addrs = [0; 6];
-        base_addrs
-            .iter_mut()
-            .enumerate()
-            .for_each(|(i, value)| *value = ecam.read_register(bus, device, 0x4 + (i as u8)));
+        base_addrs.iter_mut().enumerate().for_each(|(i, value)| {
+            *value = ecam.read_register(bus, device, 0x4 + (i as u8));
+        });
 
         let cardbus_cis_ptr = ecam.read_register(bus, device, 0xa);
 

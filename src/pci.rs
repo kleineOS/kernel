@@ -270,6 +270,68 @@ fn enumerate(ecam: PcieEcam) -> Vec<PcieEcamHeader> {
     devices
 }
 
+#[repr(u8)]
+#[derive(Debug, Clone, Copy)]
+#[allow(unused)]
+pub enum VirtioPciCapCfg {
+    /// Common configuration
+    Common = 1,
+    /// Notifications
+    Notify = 2,
+    /// ISR Status
+    Isr = 3,
+    /// Device specific configuration
+    Device = 4,
+    /// PCI configuration access
+    Pci = 5,
+    /// Shared memory region
+    SharedMem = 8,
+    /// Vendor-specific data
+    Vendor = 9,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+#[allow(unused)]
+pub struct VirtioPciCap {
+    pub cap_vndr: u8,
+    pub cap_next: u8,
+    pub cap_len: u8,
+    pub cfg_type: VirtioPciCapCfg,
+    pub bar: u8,
+    pub id: u8,
+    _padding: [u8; 2],
+    pub offset_le: u32,
+    pub length_le: u32,
+}
+
+pub fn enumerate_capabilities(base: usize, offset: usize) -> [Option<VirtioPciCap>; 10] {
+    let mut caps = [None; 10];
+    let mut i = 0;
+
+    let mut cap_base = base + offset;
+    loop {
+        let cap_id = unsafe { read_volatile(cap_base as *const u8) };
+
+        if cap_id == 0x09 {
+            let capabilities = unsafe { read_volatile(cap_base as *const VirtioPciCap) };
+            //log::trace!("{cap_base:#x}: {capabilities:#x?}");
+            caps[i] = Some(capabilities);
+            i += 1;
+        }
+
+        let next_cap = unsafe { read_volatile((cap_base + 1) as *const u8) };
+
+        if next_cap == 0 {
+            break;
+        }
+
+        cap_base = base + next_cap as usize;
+    }
+
+    caps
+}
+
 #[cfg(test)]
 mod tests {
     #[test_case]

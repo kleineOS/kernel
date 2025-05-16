@@ -112,8 +112,8 @@ fn setup_pcie(fdt: fdt::Fdt, mapper: &mut Mapper) {
     let mut pcie_manager = PcieManager::new(ecam);
 
     // the following section needs a callback that ANY driver can call from the kernel
-    let driver = virtio::BlkDriver::new();
-    pcie_manager.register_driver(&driver);
+    let mut driver = virtio::BlkDriver::new();
+    pcie_manager.register_driver(&mut driver);
 
     pcie_manager.init_drivers(fdt);
 }

@@ -1,7 +1,7 @@
 //! PCIe subsystem for the kleineOS kernel
 //! current version: 0.1-dev
 
-use core::ptr::read_volatile;
+use core::ptr::{read_volatile, write_volatile};
 
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
@@ -14,13 +14,13 @@ const COMPATIBLE: &[&str] = &["pci-host-ecam-generic"];
 pub trait PciDeviceInit {
     /// pair of (vendor_id, device_id) that this device is for
     fn id_pair(&self) -> (u16, u16);
-    fn init(&self, header: PcieEcamHeader, ecam: PcieEcam, fdt: fdt::Fdt);
+    fn init(&mut self, header: PcieEcamHeader, ecam: PcieEcam, fdt: fdt::Fdt);
 }
 
 /// This struct is used for passing the correct [DeviceStub] to the correct PcieDriver
 pub struct PcieManager<'a> {
     devices: Vec<PcieEcamHeader>,
-    drivers: BTreeMap<(u16, u16), &'a dyn PciDeviceInit>,
+    drivers: BTreeMap<(u16, u16), &'a mut dyn PciDeviceInit>,
     ecam: PcieEcam,
 }
 
@@ -36,15 +36,15 @@ impl<'a> PcieManager<'a> {
         }
     }
 
-    pub fn register_driver<T: PciDeviceInit>(&mut self, driver: &'a T) {
+    pub fn register_driver<T: PciDeviceInit>(&mut self, driver: &'a mut T) {
         let pair = driver.id_pair();
         self.drivers.insert(pair, driver);
     }
 
-    pub fn init_drivers(self, fdt: fdt::Fdt) {
+    pub fn init_drivers(&mut self, fdt: fdt::Fdt) {
         for device in self.devices.iter() {
             let id_pair = (device.vendor_id, device.device_id);
-            if let Some(driver) = self.drivers.get(&id_pair) {
+            if let Some(driver) = self.drivers.get_mut(&id_pair) {
                 driver.init(*device, self.ecam, fdt);
             }
         }
@@ -77,6 +77,13 @@ impl PcieEcam {
         // add offset and align to 4-bit byte boundry
         let word_addr = self.address(bus, device, func) + ((offset as usize) & 0xFC);
         unsafe { read_volatile(word_addr as *const u32) }
+    }
+
+    /// Write 32 bits via the PCIe ECAM interface
+    pub fn write_word(self, bus: u8, device: u8, func: u8, offset: u8, word: u32) {
+        // add offset and align to 4-bit byte boundry
+        let word_addr = self.address(bus, device, func) + ((offset as usize) & 0xFC);
+        unsafe { write_volatile(word_addr as *mut u32, word) }
     }
 
     // pcie_register!(read_device_id, 0x0, u16);

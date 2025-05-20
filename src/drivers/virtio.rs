@@ -2,13 +2,8 @@
 //! current version: 0.1-dev
 //!
 //! Based on https://docs.oasis-open.org/virtio/virtio/v1.3/virtio-v1.3.pdf
-//!
-//! The following bits need to be set to initialise the device
-//! - ACKNOWLEDGE   [1]     Ack from our OS indicating that we found the device
-//! - DRIVER        [2]     Indicates our OS knows how to drive the device
-//! - FEATURES_OK   [8]
-//! - DRIVER_OK     [4]
-//! - DEVICE_NEEDS_RESET [64]
+//! F\*\*\* PCI-SIG for making the spec a 5000USD annual subscription, I should just subscribe to
+//! some AI BS instead and make 15 SAAS apps with the same budget.
 
 use core::{
     alloc::Layout,
@@ -48,24 +43,7 @@ impl BlkDriver {
     }
 
     fn common_cfg(&self, ecam: PcieEcam, base_addr: usize, cap: VirtioPciCap) {
-        let init_data = self.get_init_data().expect("device is not initialised");
-        let bar_index = cap.bar as usize;
-
-        log::info!("{:#x?}", init_data.dev_info);
-
-        let size = hailmary(base_addr + 0x10 + (bar_index * 4));
-        let alloc_layout = Layout::from_size_align(size as usize, size as usize).unwrap();
-        let address = unsafe { alloc::alloc::alloc(alloc_layout) };
-        hailmary1(base_addr + 0x10 + (bar_index * 4), address as u32);
-
-        let value = unsafe { read_volatile((base_addr + 0x10 + (bar_index * 4)) as *const u32) };
-        log::info!("{value:#x}");
-
-        let cmd = ecam.read_word(0, 1, 0, 0x04);
-        ecam.write_word(0, 1, 0, 0x04, cmd | 0x02 | 0x04);
-
-        // I put this here so I can go and check the address in gdb
-        loop {}
+        todo!("read common config register")
     }
 
     fn enumerate_capabilities(&self, ecam: PcieEcam, base_addr: usize) {
@@ -113,7 +91,7 @@ impl PciDeviceInit for BlkDriver {
     }
 }
 
-fn hailmary(bar_addr: usize) -> u32 {
+fn get_bar_size(bar_addr: usize) -> u32 {
     let bar_addr = bar_addr as *mut u32;
 
     let original = unsafe { read_volatile(bar_addr) };
@@ -126,18 +104,47 @@ fn hailmary(bar_addr: usize) -> u32 {
     let is_pio = (register & 1) != 0;
     assert!(!is_pio, "RISC-V does not support PIO");
 
-    let bar_type = (register >> 1) & 0b11;
-    log::info!("BAR TYPE: {bar_type:#x}");
+    let _bar_type = (register >> 1) & 0b11;
 
     // the first few bits are for conveying info to us, the os
-    let size = !(register & 0xFFFFFFF0) + 1;
-    log::info!("{size:#x}");
-    size
+    !(register & 0xFFFFFFF0) + 1
 }
 
-fn hailmary1(bar_addr: usize, address: u32) {
-    let bar_addr = bar_addr as *mut u32;
-    unsafe { write_volatile(bar_addr, address) };
+fn assign_bar(ecam: PcieEcam, bus: u8, device: u8, function: u8, bar_index: u8, mmio_base: usize) {
+    let bar_offset = 0x10 + (bar_index * 4);
+    let lo = (mmio_base as u32) & 0xFFFFFFF0;
+
+    ecam.write_word(bus, device, function, bar_offset, lo);
+    ecam.write_word(bus, device, function, bar_offset + 4, 0);
+}
+
+#[repr(C)]
+#[derive(Debug)]
+struct VirtioPciCommonCfg {
+    /* About the whole device. */
+    device_feature_select: u32, // RW
+    device_feature: u32,        // RO
+    driver_feature_select: u32, // RW
+    driver_feature: u32,        // RW
+    config_msix_vector: u16,    // RW
+    num_queues: u16,            // RO
+    device_status: u8,          // RW
+    config_generation: u8,      // RO
+
+    /* About a specific virtqueue. */
+    queue_select: u16,            // RW
+    queue_msix_vector: u16,       // RW
+    queue_enable: u16,            // RW
+    queue_notify_off: u16,        // RO
+    queue_desc: u64,              // RW
+    queue_driver: u64,            // RW
+    queue_device: u64,            // RW
+    queue_notif_config_data: u16, // RO
+    queue_reset: u16,             // RW
+
+    /* About the administration virtqueue. */
+    admin_queue_index: u16, // RO
+    admin_queue_num: u16,   // RO
 }
 
 // fn find_mmio(fdt: fdt::Fdt) {

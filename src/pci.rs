@@ -1,5 +1,6 @@
 //! PCIe subsystem for the kleineOS kernel
 //! current version: 0.1-dev
+#![allow(unused)]
 
 use core::ptr::{read_volatile, write_volatile};
 
@@ -10,6 +11,7 @@ use crate::drivers::{DriverError, get_mem_addr};
 use crate::vmem::{Mapper, Perms};
 
 const COMPATIBLE: &[&str] = &["pci-host-ecam-generic"];
+pub const BAR_BASE_REG: u8 = 0x4; // location for BAR0
 
 pub trait PciDeviceInit {
     /// pair of (vendor_id, device_id) that this device is for
@@ -56,6 +58,47 @@ pub struct PcieEcam {
     base_addr: usize,
 }
 
+/// this struct locks in a specific bus, device and function number
+#[derive(Debug, Clone, Copy)]
+pub struct PcieEcamLocked {
+    ecam: PcieEcam,
+    bus: u8,
+    device: u8,
+    func: u8,
+}
+
+impl PcieEcamLocked {
+    /// Read 32 bits via the PCIe ECAM interface
+    pub fn read_word(self, offset: u8) -> u32 {
+        let bus = self.bus;
+        let device = self.device;
+        let func = self.func;
+
+        // add offset and align to 4-bit byte boundry
+        let word_addr = self.ecam.address(bus, device, func) + ((offset as usize) & 0xFC);
+        unsafe { read_volatile(word_addr as *const u32) }
+    }
+
+    /// Write 32 bits via the PCIe ECAM interface
+    pub fn write_word(self, offset: u8, word: u32) {
+        let bus = self.bus;
+        let device = self.device;
+        let func = self.func;
+
+        // add offset and align to 4-bit byte boundry
+        let word_addr = self.ecam.address(bus, device, func) + ((offset as usize) & 0xFC);
+        unsafe { write_volatile(word_addr as *mut u32, word) }
+    }
+
+    pub fn read_register(self, register: u8) -> u32 {
+        Self::read_word(self, register * 4)
+    }
+
+    pub fn write_register(self, register: u8, value: u32) {
+        Self::write_word(self, register * 4, value)
+    }
+}
+
 // macro_rules! pcie_register {
 //     ($x:ident, $offset:expr, $type:ty) => {
 //         pub fn $x(self, bus: u8, device: u8) -> $type {
@@ -65,6 +108,15 @@ pub struct PcieEcam {
 // }
 
 impl PcieEcam {
+    pub fn get_locked(self, bus: u8, device: u8) -> PcieEcamLocked {
+        PcieEcamLocked {
+            ecam: self,
+            bus,
+            device,
+            func: 0,
+        }
+    }
+
     pub fn address(self, bus: u8, device: u8, func: u8) -> usize {
         self.base_addr
             + ((bus as usize) << 20)
@@ -91,6 +143,10 @@ impl PcieEcam {
 
     pub fn read_register(self, bus: u8, device: u8, register: u8) -> u32 {
         Self::read_word(self, bus, device, 0, register * 4)
+    }
+
+    pub fn write_register(self, bus: u8, device: u8, register: u8, value: u32) {
+        Self::write_word(self, bus, device, 0, register * 4, value)
     }
 
     /// get device info that is common accross most PCIe devices

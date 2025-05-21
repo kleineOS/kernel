@@ -46,38 +46,21 @@ impl BlkDriver {
         let size = get_bar_size(ecam, bar_register);
 
         // then we allocate an memory that is aligned to the size of the BAR
-        let alloc_layout = Layout::from_size_align(size as usize, size as usize).unwrap();
-        let address = unsafe { alloc::alloc::alloc(alloc_layout) };
-
-        let address_num = address as usize;
-        let addr_lo = (address_num & 0xFFFF_FFFF) as u32;
-        let addr_hi = (address_num >> 32) as u32;
+        let address = 0x30000000;
 
         let original = ecam.read_register(bar_register);
 
         // in get_bar_size, we assert that bar type is 0x2 (64-bit)
         // so we do have to split our address into high and low and assign it properly
-        ecam.write_register(bar_register, addr_lo);
-        ecam.write_register(bar_register + 1, addr_hi);
+        ecam.write_register(bar_register, address);
 
         let new_lo = ecam.read_register(bar_register);
-        let new_hi = ecam.read_register(bar_register + 1);
-        assert_eq!(new_hi, 0, "deal with doing things the proper way later");
 
-        log::info!("size={size:#x} address={address_num:#x}");
+        log::info!("size={size:#x} address={address:#x}");
         log::info!("original={original:#x} -> lo={new_lo:#x}");
 
-        let config = address_num as *const VirtioPciCommonCfg;
+        let config = address as *const VirtioPciCommonCfg;
         unsafe { log::info!("config={:#x?}", *config) };
-
-        // sanity check
-        let bar_lo = ecam.read_register(bar_register);
-        let bar_hi = ecam.read_register(bar_register + 1);
-        let bar_combined = ((bar_hi as u64) << 32) | (bar_lo as u64);
-
-        // Mask off the bottom 4 bits — only upper bits are the base address
-        let phys_addr = bar_combined & 0xFFFF_FFF0;
-        assert_eq!(phys_addr as usize, address_num);
 
         crate::println!("\n\n\n");
         todo!("read common config register")

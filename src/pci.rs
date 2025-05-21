@@ -13,6 +13,9 @@ use crate::vmem::{Mapper, Perms};
 const COMPATIBLE: &[&str] = &["pci-host-ecam-generic"];
 pub const BAR_BASE_REG: u8 = 0x4; // location for BAR0
 
+// TODO: read this from the dtb (I wish to rewrite the driver API first)
+const PCI_ALLOC_ADDR: usize = 0x30000000;
+
 pub trait PciDeviceInit {
     /// pair of (vendor_id, device_id) that this device is for
     fn id_pair(&self) -> (u16, u16);

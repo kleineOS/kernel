@@ -38,24 +38,26 @@ impl BlkDriver {
         let bar_register = BAR_BASE_REG + bar_index;
 
         // we first read the size of the BAR
-        let _size = get_bar_size(ecam, bar_register);
+        let size = get_bar_size(ecam, bar_register);
 
         // then we allocate an memory that is aligned to the size of the BAR
-        let address = 0x30000000;
-
-        let _original = ecam.read_register(bar_register);
+        let address_base = 0x40000000; // read from dtb
+        let alignment = size;
+        let address = (address_base + alignment - 1) & !(alignment - 1);
 
         // in get_bar_size, we assert that bar type is 0x2 (64-bit)
         // so we do have to split our address into high and low and assign it properly
         ecam.write_register(bar_register, address);
 
-        let _new_lo = ecam.read_register(bar_register);
+        let new_lo = ecam.read_register(bar_register);
+        log::trace!("ADDRESS={new_lo:#x}");
 
-        // log::info!("size={size:#x} address={address:#x}");
-        // log::info!("original={original:#x} -> lo={new_lo:#x}");
+        ecam.write_word(0x04, 0b10000000010);
+        let cmd = ecam.read_word(0x04) as u16;
+        log::info!("Command Register = {cmd:#b}");
 
-        let _config = address as *const VirtioPciCommonCfg;
-        // unsafe { log::info!("config={:#x?}", *config) };
+        let config = address as *const VirtioPciCommonCfg;
+        unsafe { log::info!("config={:#x?}", *config) };
     }
 
     fn enumerate_capabilities(&self, ecam: PcieEcamLocked, base_addr: usize) {
@@ -80,6 +82,8 @@ impl PciDeviceInit for BlkDriver {
     }
 
     fn init(&mut self, header: PcieEcamHeader, ecam: PcieEcam, _fdt: fdt::Fdt) {
+        log::info!("{header:#x?}");
+
         let bus = header.bus_nr;
         let device = header.device_nr;
 

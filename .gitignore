@@ -14,3 +14,10 @@
 
 # generated objects files
 *.o
+
+# editor specific files
+# keep your configs to yourself, and I will keep mine to myself
+/.idea
+/.vscode
+/.helix
+/.zed

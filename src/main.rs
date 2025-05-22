@@ -12,6 +12,7 @@ mod kinit;
 mod pci;
 mod proc;
 mod riscv;
+mod systems;
 mod trap;
 mod vmem;
 mod writer;
@@ -71,6 +72,7 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     CharDriver::log_addr().unwrap(); // cannot fail
 
     // we setup pcie subsystem along with some basic drivers
+    systems::pci::PciSubsystem::init(fdt);
     setup_pcie(fdt, &mut mapper);
 
     #[cfg(test)]

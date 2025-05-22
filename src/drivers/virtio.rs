@@ -5,20 +5,17 @@
 //! F\*\*\* PCI-SIG for making the spec a 5000USD annual subscription, I should just subscribe to
 //! some AI BS instead and make 15 SAAS apps with the same budget.
 
-use core::alloc::Layout;
-
 use crate::pci::*;
 
 #[derive(Debug)]
 struct PostInitData {
     dev_info: GeneralDevInfo,
-    header: PcieEcamHeader,
 }
 
 impl PostInitData {
     /// generate this struct using the [PcieEcamHeader] and the [GeneralDevInfo] structs
-    pub fn generate(dev_info: GeneralDevInfo, header: PcieEcamHeader) -> Self {
-        Self { dev_info, header }
+    pub fn generate(dev_info: GeneralDevInfo) -> Self {
+        Self { dev_info }
     }
 }
 
@@ -37,33 +34,28 @@ impl BlkDriver {
     }
 
     fn common_cfg(&self, ecam: PcieEcamLocked, cap: VirtioPciCap) {
-        crate::println!("\n\n\n");
-
         let bar_index = cap.bar;
         let bar_register = BAR_BASE_REG + bar_index;
 
         // we first read the size of the BAR
-        let size = get_bar_size(ecam, bar_register);
+        let _size = get_bar_size(ecam, bar_register);
 
         // then we allocate an memory that is aligned to the size of the BAR
         let address = 0x30000000;
 
-        let original = ecam.read_register(bar_register);
+        let _original = ecam.read_register(bar_register);
 
         // in get_bar_size, we assert that bar type is 0x2 (64-bit)
         // so we do have to split our address into high and low and assign it properly
         ecam.write_register(bar_register, address);
 
-        let new_lo = ecam.read_register(bar_register);
+        let _new_lo = ecam.read_register(bar_register);
 
-        log::info!("size={size:#x} address={address:#x}");
-        log::info!("original={original:#x} -> lo={new_lo:#x}");
+        // log::info!("size={size:#x} address={address:#x}");
+        // log::info!("original={original:#x} -> lo={new_lo:#x}");
 
-        let config = address as *const VirtioPciCommonCfg;
-        unsafe { log::info!("config={:#x?}", *config) };
-
-        crate::println!("\n\n\n");
-        todo!("read common config register")
+        let _config = address as *const VirtioPciCommonCfg;
+        // unsafe { log::info!("config={:#x?}", *config) };
     }
 
     fn enumerate_capabilities(&self, ecam: PcieEcamLocked, base_addr: usize) {
@@ -88,8 +80,6 @@ impl PciDeviceInit for BlkDriver {
     }
 
     fn init(&mut self, header: PcieEcamHeader, ecam: PcieEcam, _fdt: fdt::Fdt) {
-        log::info!("Initialising VirtIO Block Device driver");
-
         let bus = header.bus_nr;
         let device = header.device_nr;
 
@@ -103,7 +93,7 @@ impl PciDeviceInit for BlkDriver {
         assert_eq!(dev_info.subsystem_id, 0x2, "block device should be 0x2");
         assert!(header.status_capabilities_list());
 
-        let post_init_data = PostInitData::generate(dev_info, header);
+        let post_init_data = PostInitData::generate(dev_info);
         self.post_init_data = Some(post_init_data);
 
         let ecam_locked = ecam.get_locked(bus, device);
@@ -158,7 +148,3 @@ struct VirtioPciCommonCfg {
     admin_queue_index: u16, // RO
     admin_queue_num: u16,   // RO
 }
-
-// fn find_mmio(fdt: fdt::Fdt) {
-//     let nodes = fdt.find_compatible(&["virtio,mmio"]).unwrap();
-// }

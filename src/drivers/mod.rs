@@ -27,7 +27,7 @@ pub struct MemoryRange {
 pub fn get_mem_addr(fdt: fdt::Fdt, compatible: &[&str]) -> Option<MemoryRange> {
     let node = fdt.find_compatible(compatible)?;
     // TODO: I dont know if I return all, will modify API when needed
-    let memory_region = node.reg().into_iter().flatten().next()?;
+    let memory_region = node.reg()?.next()?;
 
     let addr = memory_region.starting_address as usize;
     let size_bytes = memory_region.size?;

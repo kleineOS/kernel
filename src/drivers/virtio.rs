@@ -7,6 +7,9 @@
 
 use crate::pci::*;
 
+const BIT_DISABLE_INTERRUPT: u32 = 0b10000000000;
+const BIT_ENABLE_MMIO: u32 = 0b10;
+
 #[derive(Debug)]
 struct PostInitData {
     dev_info: GeneralDevInfo,
@@ -41,23 +44,17 @@ impl BlkDriver {
         let size = get_bar_size(ecam, bar_register);
 
         // then we allocate an memory that is aligned to the size of the BAR
-        let address_base = 0x40000000; // read from dtb
+        let address_base = crate::pci::BASE_MMIO_ADDR; // read from dtb
         let alignment = size;
         let address = (address_base + alignment - 1) & !(alignment - 1);
 
         // in get_bar_size, we assert that bar type is 0x2 (64-bit)
         // so we do have to split our address into high and low and assign it properly
         ecam.write_register(bar_register, address);
+        ecam.write_word(0x04, BIT_DISABLE_INTERRUPT | BIT_ENABLE_MMIO);
 
-        let new_lo = ecam.read_register(bar_register);
-        log::trace!("ADDRESS={new_lo:#x}");
-
-        ecam.write_word(0x04, 0b10000000010);
-        let cmd = ecam.read_word(0x04) as u16;
-        log::info!("Command Register = {cmd:#b}");
-
-        let config = address as *const VirtioPciCommonCfg;
-        unsafe { log::info!("config={:#x?}", *config) };
+        let _config = address as *const VirtioPciCommonCfg;
+        //unsafe { log::info!("config={:#x?}", *config) };
     }
 
     fn enumerate_capabilities(&self, ecam: PcieEcamLocked, base_addr: usize) {
@@ -68,9 +65,8 @@ impl BlkDriver {
         let mut cap_iter = capabilities.into_iter();
 
         while let Some(Some(cap)) = cap_iter.next() {
-            match cap.cfg_type {
-                VirtioPciCapCfg::Common => self.common_cfg(ecam, cap),
-                cfg_type => log::trace!("TODO: {cfg_type:?} CAPABILITY CONFIG"),
+            if let VirtioPciCapCfg::Common = cap.cfg_type {
+                self.common_cfg(ecam, cap)
             }
         }
     }
@@ -82,8 +78,6 @@ impl PciDeviceInit for BlkDriver {
     }
 
     fn init(&mut self, header: PcieEcamHeader, ecam: PcieEcam, _fdt: fdt::Fdt) {
-        log::info!("{header:#x?}");
-
         let bus = header.bus_nr;
         let device = header.device_nr;
 

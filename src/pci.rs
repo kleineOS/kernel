@@ -12,6 +12,7 @@ use crate::vmem::{Mapper, Perms};
 
 const COMPATIBLE: &[&str] = &["pci-host-ecam-generic"];
 pub const BAR_BASE_REG: u8 = 0x4; // location for BAR0
+pub const BASE_MMIO_ADDR: u32 = 0x40000000;
 
 pub trait PciDeviceInit {
     /// pair of (vendor_id, device_id) that this device is for

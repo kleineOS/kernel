@@ -28,6 +28,7 @@ use vmem::{Mapper, Perms};
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 unsafe extern "C" {
+    pub static MEMTOP: usize;
     pub static ETEXT: usize;
     pub static STACK_TOP: usize;
     pub static STACK_BOTTOM: usize;
@@ -37,7 +38,6 @@ unsafe extern "C" {
     pub static HEAP1_TOP: usize;
 }
 
-const KERNEL_START: usize = 0x8020_0000;
 pub const INTERVAL: usize = 8000000;
 pub const PAGE_SIZE: usize = 0x1000; // 4096
 pub const HEAP1_SIZE: usize = 1024 * 1024 * 1024;
@@ -83,9 +83,11 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
 }
 
 fn map_vitals(mapper: &mut Mapper) -> Result<(), vmem::MapError> {
+    let kernel_start = unsafe { MEMTOP };
+
     // we are rounding up the etext
     let etext = (unsafe { ETEXT } + 4095) & !4095;
-    let kernel_pages = (etext - KERNEL_START) / 4096;
+    let kernel_pages = (etext - kernel_start) / 4096;
 
     let heap1 = unsafe { HEAP1_TOP };
     let heap1_pages = HEAP1_SIZE / PAGE_SIZE;
@@ -94,7 +96,7 @@ fn map_vitals(mapper: &mut Mapper) -> Result<(), vmem::MapError> {
     let stack_heap0_pages = stack_heap0_size / PAGE_SIZE;
 
     // MAP THE KERNEL
-    mapper.map(KERNEL_START, KERNEL_START, Perms::EXEC, kernel_pages)?;
+    mapper.map(kernel_start, kernel_start, Perms::EXEC, kernel_pages)?;
 
     // TODO: map the heap pages during allocation
 

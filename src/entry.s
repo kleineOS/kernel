@@ -33,13 +33,18 @@ callstart:
 # we also create global symbols to access the symbols we defined in linker.ld
 .section .rodata
 
+.global MEMTOP
+MEMTOP: .dword __mem_top
+
 .global ETEXT
 ETEXT: .dword __etext
+
 # stack
 .global STACK_TOP
 STACK_TOP: .dword __stack_top
 .global STACK_BOTTOM
 STACK_BOTTOM: .dword __stack_bottom
+
 # the first heap, this is for very early stage init
 .global HEAP0_TOP
 HEAP0_TOP: .dword __heap0_top

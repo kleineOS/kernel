@@ -7,6 +7,7 @@ ENTRY(_start)
 
 SECTIONS {
     . = 0x80200000;
+    PROVIDE(__mem_top = .);
 
     .text : ALIGN(4K) {
         /* boot code is always placed at the top */

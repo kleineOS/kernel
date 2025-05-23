@@ -54,10 +54,11 @@ impl BuddySystem {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::symbols;
 
     #[test_case]
     fn basic_asserts() {
-        let buddy = unsafe { BuddySystem::init(crate::HEAP1_TOP) };
+        let buddy = unsafe { BuddySystem::init(symbols::HEAP1_TOP) };
         let mut buddy = buddy.unwrap();
         assert!(buddy.alloc(3).is_err());
         assert!(buddy.alloc(2).is_ok());

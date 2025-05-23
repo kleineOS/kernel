@@ -12,6 +12,7 @@ mod kinit;
 mod pci;
 mod proc;
 mod riscv;
+mod symbols;
 mod systems;
 mod trap;
 mod vmem;
@@ -27,24 +28,13 @@ use vmem::{Mapper, Perms};
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
 
-unsafe extern "C" {
-    pub static MEMTOP: usize;
-    pub static ETEXT: usize;
-    pub static STACK_TOP: usize;
-    pub static STACK_BOTTOM: usize;
-    // reserved for a "dma" stype allocator (contigous allocations)
-    pub static HEAP0_TOP: usize;
-    // reserved for a global_alloc which enables me to use `alloc`
-    pub static HEAP1_TOP: usize;
-}
-
 pub const INTERVAL: usize = 8000000;
 pub const PAGE_SIZE: usize = 0x1000; // 4096
 pub const HEAP1_SIZE: usize = 1024 * 1024 * 1024;
 pub const STACK_PAGES: usize = 1;
 
 fn init_heap1() {
-    let heap_start = unsafe { HEAP1_TOP as *mut u8 };
+    let heap_start = unsafe { symbols::HEAP1_TOP as *mut u8 };
     unsafe { ALLOCATOR.lock().init(heap_start, HEAP1_SIZE) }
 }
 
@@ -55,7 +45,7 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     writer::init_log();
     log::debug!("HART#{hartid}");
 
-    let balloc_addr = unsafe { HEAP0_TOP };
+    let balloc_addr = unsafe { symbols::HEAP0_TOP };
     let balloc = allocator::BitMapAlloc::init(balloc_addr);
     init_heap1();
 
@@ -68,8 +58,8 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     // map the kernel, stack and the heap onto the memory
     map_vitals(&mut mapper).expect("could not map vital memory");
 
+    // work in progress driver, redundent unless we wanna add multiple serial outputs
     CharDriver::init(fdt, &mut mapper).expect("could not init uart driver");
-    CharDriver::log_addr().unwrap(); // cannot fail
 
     // we setup pcie subsystem along with some basic drivers
     systems::pci::PciSubsystem::init(fdt);
@@ -83,13 +73,13 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
 }
 
 fn map_vitals(mapper: &mut Mapper) -> Result<(), vmem::MapError> {
-    let kernel_start = unsafe { MEMTOP };
+    let kernel_start = unsafe { symbols::MEMTOP };
 
     // we are rounding up the etext
-    let etext = (unsafe { ETEXT } + 4095) & !4095;
+    let etext = round_up_by(unsafe { symbols::ETEXT }, PAGE_SIZE);
     let kernel_pages = (etext - kernel_start) / 4096;
 
-    let heap1 = unsafe { HEAP1_TOP };
+    let heap1 = unsafe { symbols::HEAP1_TOP };
     let heap1_pages = HEAP1_SIZE / PAGE_SIZE;
 
     let stack_heap0_size = heap1 - etext;
@@ -137,6 +127,12 @@ fn panic(info: &PanicInfo) -> ! {
     }
 
     riscv::pauseloop();
+}
+
+#[inline]
+pub fn round_up_by(input: usize, alignment: usize) -> usize {
+    let boundry = alignment - 1;
+    (input + boundry) & !boundry
 }
 
 #[cfg(test)]

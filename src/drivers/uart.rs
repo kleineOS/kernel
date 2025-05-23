@@ -36,14 +36,6 @@ impl CharDriver {
         Ok(())
     }
 
-    pub fn log_addr() -> Result<(), DriverError> {
-        let this = Self::get_instance().ok_or(DriverError::DriverUninitialised)?;
-
-        let _addr = this.base_addr;
-
-        Ok(())
-    }
-
     fn get_instance() -> Option<&'static mut Self> {
         unsafe { DRIVER_PTR.load(Ordering::Relaxed).as_mut() }
     }

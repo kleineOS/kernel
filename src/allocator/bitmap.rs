@@ -79,19 +79,19 @@ impl<const SIZE: usize> BitMap<SIZE> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::PAGE_SIZE;
+    use crate::{PAGE_SIZE, symbols};
 
     #[test_case]
     fn test_zero() {
         const N: usize = 1234;
-        let bm = unsafe { BitMap::<N>::zeroed(crate::HEAP0_TOP) };
+        let bm = unsafe { BitMap::<N>::zeroed(symbols::HEAP0_TOP) };
 
         for i in 0..N {
             unsafe { assert_eq!((*bm.inner)[i], 0, "index#{i}") };
         }
 
         // and a larger, the "default" PAGE_SIZE amount
-        let bm = unsafe { BitMap::<PAGE_SIZE>::zeroed(crate::HEAP0_TOP) };
+        let bm = unsafe { BitMap::<PAGE_SIZE>::zeroed(symbols::HEAP0_TOP) };
 
         for i in 0..PAGE_SIZE {
             unsafe { assert_eq!((*bm.inner)[i], 0, "index#{i}") };
@@ -100,7 +100,7 @@ mod tests {
 
     #[test_case]
     fn test_get_put() {
-        let mut bm = unsafe { BitMap::<PAGE_SIZE>::zeroed(crate::HEAP0_TOP) };
+        let mut bm = unsafe { BitMap::<PAGE_SIZE>::zeroed(symbols::HEAP0_TOP) };
 
         // initial state should be all 0s (aka false)
         assert!(!bm.get(0));
@@ -114,7 +114,7 @@ mod tests {
 
     #[test_case]
     fn test_len() {
-        let bm = unsafe { BitMap::<PAGE_SIZE>::zeroed(crate::HEAP0_TOP) };
+        let bm = unsafe { BitMap::<PAGE_SIZE>::zeroed(symbols::HEAP0_TOP) };
         assert_eq!(bm.len(), PAGE_SIZE * 8);
     }
 }

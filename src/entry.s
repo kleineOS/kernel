@@ -29,29 +29,3 @@ setsstatus:
 callstart:
     bne t0, t1, kinit
     call start
-
-# we also create global symbols to access the symbols we defined in linker.ld
-.section .rodata
-
-.global MEMTOP
-MEMTOP: .dword __mem_top
-
-.global ETEXT
-ETEXT: .dword __etext
-
-# stack
-.global STACK_TOP
-STACK_TOP: .dword __stack_top
-.global STACK_BOTTOM
-STACK_BOTTOM: .dword __stack_bottom
-
-# the first heap, this is for very early stage init
-.global HEAP0_TOP
-HEAP0_TOP: .dword __heap0_top
-.global HEAP0_BOTTOM
-HEAP0_BOTTOM: .dword __heap0_bottom
-# the second heap, this is managed by a linked list allocator
-.global HEAP1_TOP
-HEAP1_TOP: .dword __heap1_top
-# .global HEAP1_BOTTOM
-# HEAP1_BOTTOM: .dword __heap1_bottom

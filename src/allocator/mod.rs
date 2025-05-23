@@ -97,11 +97,13 @@ pub enum AllocatorError {
 
 #[cfg(test)]
 mod tests {
+    use crate::symbols;
+
     use super::*;
 
     #[test_case]
     fn test_balloc() {
-        let top = unsafe { crate::HEAP0_TOP };
+        let top = unsafe { symbols::HEAP0_TOP };
         let balloc = BitMapAlloc::init(top);
 
         let alloc0 = balloc.lock().alloc(4);

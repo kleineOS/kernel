@@ -5,6 +5,10 @@ kernel=$1
 flags="${2:-default}"
 
 if [[ $flags = "uboot" ]]; then
+    if [[ ! -f "target/uboot/u-boot" ]]; then
+        echo "could not find u-boot binary, try running \`just build-uboot\`"
+        exit 1
+    fi
     kernel="target/uboot/u-boot"
     flags="default"
 fi

@@ -8,7 +8,7 @@ set export := true
 
 # default runner for cargo, not meant to be used directly
 [private]
-@runner kernel *FLAGS: create-disk build-uboot
+@runner kernel *FLAGS: create-disk
     .cargo/runner.sh {{ kernel }} {{ FLAGS }}
 
 # create a 64MiB fat32 disk image
@@ -29,7 +29,7 @@ create-disk: build-tools
 
 # build u-boot
 [working-directory: "target/uboot"]
-build-uboot: build-tools (build-dir "uboot")
+build-uboot: build-tools-full (build-dir "uboot")
     #!/usr/bin/env bash
     if [[ ! -f u-boot-spl.bin || ! -f u-boot.itb || ! -f u-boot ]]; then
         test -f $UBOOT_TAR || wget $UBOOT_URL
@@ -54,8 +54,12 @@ clean-uboot:
     mkdir -p target/{{DIR}}
 
 [private]
+@build-tools-full: build-tools
+    which wget tar nproc dd mkfs.fat mcopy swig > /dev/null
+
+[private]
 @build-tools:
-    which wget tar nproc dd mkfs.fat mcopy swig $QEMU $OBJDUMP $OBJDUMP > /dev/null
+    which $QEMU $OBJDUMP $OBJDUMP > /dev/null
 
 # tools we use (can differ on other distros)
 QEMU := env("QEMU", "qemu-system-riscv64")

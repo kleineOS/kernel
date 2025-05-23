@@ -1,6 +1,7 @@
 //! A driver for the 16550A UART device
 //!
 //! TODO: will continue the impl once I have some other stuff done
+#![allow(unused)]
 
 use core::{
     ptr::null_mut,

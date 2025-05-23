@@ -23,6 +23,7 @@ use core::panic::PanicInfo;
 use drivers::{uart::CharDriver, virtio};
 use linked_list_allocator::LockedHeap;
 use pci::PcieManager;
+use systems::pci::PciSubsystem;
 use vmem::{Mapper, Perms};
 
 #[global_allocator]
@@ -41,9 +42,9 @@ fn init_heap1() {
 #[unsafe(no_mangle)]
 extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     println!("\n\n\n^w^ welcome to my operating system");
-
     writer::init_log();
-    log::debug!("HART#{hartid}");
+
+    log::debug!("KERNEL STARTING ON HART#{hartid}");
 
     let balloc_addr = unsafe { symbols::HEAP0_TOP };
     let balloc = allocator::BitMapAlloc::init(balloc_addr);
@@ -62,7 +63,7 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     CharDriver::init(fdt, &mut mapper).expect("could not init uart driver");
 
     // we setup pcie subsystem along with some basic drivers
-    systems::pci::PciSubsystem::init(fdt);
+    let _pci = PciSubsystem::init(fdt, &mut mapper).expect("could not initialise PCI");
     setup_pcie(fdt, &mut mapper);
 
     #[cfg(test)]
@@ -112,6 +113,18 @@ fn setup_pcie(fdt: fdt::Fdt, mapper: &mut Mapper) {
     pcie_manager.init_drivers(fdt);
 }
 
+#[inline]
+pub fn round_up_by(input: usize, alignment: usize) -> usize {
+    let boundry = alignment - 1;
+    (input + boundry) & !boundry
+}
+
+#[inline]
+pub fn round_down_by(input: usize, alignment: usize) -> usize {
+    let boundry = alignment - 1;
+    input & !boundry
+}
+
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     riscv::interrupt::disable();
@@ -129,12 +142,6 @@ fn panic(info: &PanicInfo) -> ! {
     riscv::pauseloop();
 }
 
-#[inline]
-pub fn round_up_by(input: usize, alignment: usize) -> usize {
-    let boundry = alignment - 1;
-    (input + boundry) & !boundry
-}
-
 #[cfg(test)]
 pub fn test_runner(tests: &[&dyn Fn()]) -> ! {
     use riscv::sbi::srst::*;
@@ -148,6 +155,7 @@ pub fn test_runner(tests: &[&dyn Fn()]) -> ! {
         println!("test #{i} [OK]");
     }
 
+    // we can grep this in target/serial.log to determine if tests were successful or not
     println!("\n=====| ALL TESTS PASSED |=====");
     system_reset(ResetType::Shutdown, ResetReason::None);
     riscv::pauseloop();

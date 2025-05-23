@@ -312,7 +312,8 @@ pub fn init(fdt: fdt::Fdt, mapper: &mut Mapper) -> Result<PcieEcam, DriverError>
     let base_addr = mem_range.addr;
     let pages = mem_range.size_bytes / crate::PAGE_SIZE;
 
-    mapper.map(base_addr, base_addr, Perms::READ_WRITE, pages)?;
+    // stated for deletion
+    //mapper.map(base_addr, base_addr, Perms::READ_WRITE, pages)?;
 
     let ecam = PcieEcam { base_addr };
 

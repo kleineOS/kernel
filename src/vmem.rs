@@ -1,6 +1,7 @@
+use core::alloc::Layout;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::{allocator::BitMapAlloc, riscv};
+use crate::{PAGE_SIZE, allocator::BitMapAlloc, riscv};
 
 const NO_KPTBL: usize = 0xdead_babe;
 static PAGE_TABLE: AtomicUsize = AtomicUsize::new(NO_KPTBL);
@@ -27,6 +28,8 @@ pub enum MapError {
 /// A struct that holds a reference to an allocator and the root page table. This allows drivers to
 /// map pages, without having to worry about anything outside their scope
 pub struct Mapper<'a> {
+    #[allow(unused)]
+    #[deprecated]
     balloc: &'a mut BitMapAlloc,
     table: &'a mut [PTEntry; 512],
 }
@@ -39,7 +42,7 @@ impl<'a> Mapper<'a> {
         perms: Perms,
         pages: usize,
     ) -> Result<(), MapError> {
-        map(self.balloc, self.table, paddr, vaddr, perms, pages)?;
+        map(self.table, paddr, vaddr, perms, pages)?;
         Ok(())
     }
 }
@@ -88,7 +91,6 @@ pub fn init(balloc: &mut BitMapAlloc) -> Mapper {
 }
 
 fn map(
-    balloc: &mut BitMapAlloc,
     root: &mut [PTEntry; 512],
     paddr: usize,
     vaddr: usize,
@@ -104,7 +106,7 @@ fn map(
         let pa = paddr + offset;
 
         let pte = unsafe {
-            let ptr = walk(balloc, root, va);
+            let ptr = walk(root, va);
             ptr.as_mut()
                 .ok_or(MapError::InvalidPtr { ptr: ptr as usize })?
         };
@@ -123,11 +125,7 @@ fn map(
     Ok(())
 }
 
-fn walk(
-    balloc: &mut BitMapAlloc,
-    mut pagetable: &mut [PTEntry; 512],
-    vaddr: usize,
-) -> *mut PTEntry {
+fn walk(mut pagetable: &mut [PTEntry; 512], vaddr: usize) -> *mut PTEntry {
     for level in [2, 1].iter() {
         let idx = idx_for_vaddr(*level, vaddr);
         let pte = &mut pagetable[idx];
@@ -136,7 +134,12 @@ fn walk(
             let pa = pte.get_physical_addr();
             pagetable = unsafe { &mut *(pa as *mut [PTEntry; 512]) };
         } else {
-            let new_table_addr = balloc.alloc(1);
+            let new_table_addr = unsafe {
+                let layout = Layout::from_size_align_unchecked(PAGE_SIZE, PAGE_SIZE);
+                let addr = alloc::alloc::alloc_zeroed(layout);
+                addr as usize
+            };
+
             let new_table = unsafe { &mut *(new_table_addr as *mut [PTEntry; 512]) };
 
             for entry in new_table.iter_mut() {
@@ -166,6 +169,6 @@ pub fn inithart() {
 }
 
 #[inline]
-pub fn idx_for_vaddr(level: usize, va: usize) -> usize {
+fn idx_for_vaddr(level: usize, va: usize) -> usize {
     (va >> (12 + (9 * level))) & 0x1FF
 }

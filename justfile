@@ -58,9 +58,9 @@ clean-uboot:
     which wget tar nproc dd mkfs.fat mcopy swig $QEMU $OBJDUMP $OBJDUMP > /dev/null
 
 # tools we use (can differ on other distros)
-QEMU := "qemu-system-riscv64"
-DEBUGGER := "rust-gdb"
-OBJDUMP := "riscv64-linux-gnu-objdump"
+QEMU := env("QEMU", "qemu-system-riscv64")
+DEBUGGER := env("DEBUGGER", "rust-gdb")
+OBJDUMP := env("OBJDUMP", "riscv64-linux-gnu-objdump")
 # VM config
 CORE_COUNT := "4"
 MEM_SIZE := "256M"

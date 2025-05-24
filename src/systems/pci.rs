@@ -15,18 +15,13 @@ const RANGE_MMIO_32_BIT: u32 = 0b11;
 const RANGE_PIO: u32 = 0b01;
 const RANGE_CONFIG: u32 = 0b00;
 
+const REG_VENDOR_ID: u8 = 0;
+const REG_DEVICE_ID: u8 = 2;
+
 pub struct PciSubsystem {
     mem: PcieMemory,
     ecam: Ecam,
-    devices: Vec<()>,
-}
-
-struct Ecam {}
-
-impl Ecam {
-    fn init(config_base_addr: usize) -> Self {
-        Self {}
-    }
+    devices: Vec<Device>,
 }
 
 impl PciSubsystem {
@@ -35,8 +30,17 @@ impl PciSubsystem {
         mem.map_memory(mapper);
 
         let ecam = Ecam::init(mem.base_address);
-        let devices = enumerate_devices();
+        let devices = enumerate_devices(ecam);
 
+        for device in &devices {
+            log::info!(
+                "DEVICE FOUND: {:#06x}:{:#06x}",
+                device.vendor_id(),
+                device.device_id()
+            );
+        }
+
+        log::info!("PCI subsystem has been initialised");
         Some(Self { mem, ecam, devices })
     }
 }
@@ -98,6 +102,7 @@ impl PcieMemory {
             mmio_max_64_bit,
         })
     }
+
     pub fn allocate_64bit(&mut self, size: usize) -> Option<usize> {
         let addr = self.mmio_64_bit?;
         let addr_max = self.mmio_max_64_bit?;
@@ -153,13 +158,102 @@ impl PcieMemory {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct Ecam {
+    base_addr: usize,
+}
+
+impl Ecam {
+    fn init(base_addr: usize) -> Self {
+        Self { base_addr }
+    }
+
+    pub const fn address(&self, bus: u8, device: u8, func: u8, offset: u8) -> usize {
+        self.base_addr
+            + ((bus as usize) << 20)
+            + ((device as usize) << 15)
+            + ((func as usize) << 12)
+            + offset as usize
+    }
+
+    fn read<T>(&self, bus: u8, device: u8, func: u8, offset: u8) -> T {
+        let address = self.address(bus, device, func, offset);
+        unsafe { core::ptr::read_volatile(address as *const T) }
+    }
+
+    fn write<T>(&self, bus: u8, device: u8, func: u8, offset: u8, value: T) {
+        let address = self.address(bus, device, func, offset);
+        unsafe { core::ptr::write_volatile(address as *mut T, value) };
+    }
+
+    fn get_device(&self, bus: u8, device: u8, func: u8) -> Option<Device> {
+        let ecam = EcamLocked::init(*self, bus, device, func);
+
+        match self.read::<u16>(bus, device, func, REG_VENDOR_ID) {
+            0xFFFF => None,
+            _ => Some(Device { ecam }),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct EcamLocked {
+    ecam: Ecam,
+    bus: u8,
+    device: u8,
+    func: u8,
+}
+
+impl EcamLocked {
+    fn init(ecam: Ecam, bus: u8, device: u8, func: u8) -> Self {
+        Self {
+            ecam,
+            bus,
+            device,
+            func,
+        }
+    }
+
+    fn read<T>(&self, offset: u8) -> T {
+        self.ecam.read(self.bus, self.device, self.func, offset)
+    }
+
+    fn write<T>(&self, offset: u8, value: T) {
+        self.ecam
+            .write(self.bus, self.device, self.func, offset, value);
+    }
+}
+
+#[derive(Debug)]
+struct Device {
+    ecam: EcamLocked,
+}
+
+impl Device {
+    pub fn vendor_id(&self) -> u16 {
+        self.ecam.read(REG_VENDOR_ID)
+    }
+
+    pub fn device_id(&self) -> u16 {
+        self.ecam.read(REG_DEVICE_ID)
+    }
+}
+
 /// Enumerate PCI devices. Returns a Vector (heap allocated)
-fn enumerate_devices() -> Vec<()> {
-    let devices = Vec::new();
-    bruteforce_enumerate();
+fn enumerate_devices(ecam: Ecam) -> Vec<Device> {
+    let mut devices = Vec::new();
+    bruteforce_enumerate(ecam, &mut devices);
     devices
 }
 
 /// Not the best way, as we are just looping over all devices and busses. But it is good enough for
 /// now, and it is not too inefficient as we do not really have a lot of devices in our VM
-fn bruteforce_enumerate() {}
+fn bruteforce_enumerate<T: Extend<Device>>(ecam: Ecam, list: &mut T) {
+    let func = 0;
+
+    for bus in 0..=255 {
+        for device in 0..32 {
+            list.extend(ecam.get_device(bus, device, func));
+        }
+    }
+}

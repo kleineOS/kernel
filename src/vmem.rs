@@ -28,9 +28,6 @@ pub enum MapError {
 /// A struct that holds a reference to an allocator and the root page table. This allows drivers to
 /// map pages, without having to worry about anything outside their scope
 pub struct Mapper<'a> {
-    #[allow(unused)]
-    #[deprecated]
-    balloc: &'a mut BitMapAlloc,
     table: &'a mut [PTEntry; 512],
 }
 
@@ -87,7 +84,7 @@ pub fn init(balloc: &mut BitMapAlloc) -> Mapper {
     // safety: we know that table_addr contains 4096 bytes, so this is safe
     let table = unsafe { &mut *(tbl_addr as *mut [PTEntry; 512]) };
 
-    Mapper { balloc, table }
+    Mapper { table }
 }
 
 fn map(

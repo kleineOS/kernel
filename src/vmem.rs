@@ -39,6 +39,7 @@ impl<'a> Mapper<'a> {
         perms: Perms,
         pages: usize,
     ) -> Result<(), MapError> {
+        log::info!("[MAPPER] paddr={paddr:#x} vaddr={vaddr:#x} perms={perms:?} pages={pages}");
         map(self.table, paddr, vaddr, perms, pages)?;
         Ok(())
     }

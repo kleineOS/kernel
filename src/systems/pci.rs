@@ -34,13 +34,13 @@ impl PciSubsystem {
 
         for device in &devices {
             log::info!(
-                "DEVICE FOUND: {:#06x}:{:#06x}",
+                "[PCI] DEVICE FOUND: {:#06x}:{:#06x}",
                 device.vendor_id(),
                 device.device_id()
             );
         }
 
-        log::info!("PCI subsystem has been initialised");
+        log::info!("[PCI] PCI subsystem has been initialised");
         Some(Self { mem, ecam, devices })
     }
 }

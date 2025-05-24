@@ -20,7 +20,7 @@ mod writer;
 
 use core::panic::PanicInfo;
 
-use drivers::{uart::CharDriver, virtio};
+use drivers::{uart::CharDriver, virtio_old};
 use linked_list_allocator::LockedHeap;
 use pci::PcieManager;
 use systems::pci::PciSubsystem;
@@ -107,7 +107,7 @@ fn setup_pcie(fdt: fdt::Fdt, mapper: &mut Mapper) {
     let mut pcie_manager = PcieManager::new(ecam);
 
     // the following section needs a callback that ANY driver can call from the kernel
-    let mut driver = virtio::BlkDriver::new();
+    let mut driver = virtio_old::BlkDriver::new();
     pcie_manager.register_driver(&mut driver);
 
     pcie_manager.init_drivers(fdt);

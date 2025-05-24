@@ -26,5 +26,5 @@ git = "https://github.com/repnop/fdt.git"
 rev = "059bb2383873f8001959456e36ec123228f67642"
 
 [features]
-default = [ "fdt_pretty_printing" ]
+default = ["fdt_pretty_printing"]
 fdt_pretty_printing = ["fdt/pretty-printing"]

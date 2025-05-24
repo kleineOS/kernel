@@ -15,7 +15,7 @@ I would also like to make this happen, if I can pull it off:
 
 ## Building
 
-The core build system for kleineOS uses [`just`](https://github.com/casey/just), bash and Cargo. Additionally, QEMU (with RISC-V support) to actually run the kernel.
+The core build system for kleineOS uses [`just`](https://github.com/casey/just), `bash` and `cargo`. You also need QEMU (with RISC-V support) to actually run the kernel.
 
 For developing for kleineOS, I recommend the RISC-V GNU toolchain. It provides utilities with RISC-V support, such as `objdump`, `gdb`, `as`, etc.
 

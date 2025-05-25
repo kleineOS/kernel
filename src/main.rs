@@ -20,11 +20,15 @@ mod writer;
 
 use core::panic::PanicInfo;
 
-use drivers::{uart::CharDriver, virtio_old};
+use drivers::virtio;
 use linked_list_allocator::LockedHeap;
-use pci::PcieManager;
-use systems::pci::PciSubsystem;
-use vmem::{Mapper, Perms};
+use spin::Mutex;
+
+use crate::allocator::BitMapAlloc;
+use crate::drivers::{uart::CharDriver, virtio_old};
+use crate::pci::PcieManager;
+use crate::systems::pci::PciSubsystem;
+use crate::vmem::{Mapper, Perms};
 
 #[global_allocator]
 static ALLOCATOR: LockedHeap = LockedHeap::empty();
@@ -34,9 +38,15 @@ pub const PAGE_SIZE: usize = 0x1000; // 4096
 pub const HEAP1_SIZE: usize = 1024 * 1024 * 1024;
 pub const STACK_PAGES: usize = 1;
 
-fn init_heap1() {
+fn init_heap() -> Mutex<BitMapAlloc> {
+    let balloc_addr = unsafe { symbols::HEAP0_TOP };
+    let balloc = allocator::BitMapAlloc::init(balloc_addr);
+
+    // global allocator for `alloc`
     let heap_start = unsafe { symbols::HEAP1_TOP as *mut u8 };
     unsafe { ALLOCATOR.lock().init(heap_start, HEAP1_SIZE) }
+
+    balloc
 }
 
 #[unsafe(no_mangle)]
@@ -46,9 +56,7 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
 
     log::debug!("KERNEL STARTING ON HART#{hartid}");
 
-    let balloc_addr = unsafe { symbols::HEAP0_TOP };
-    let balloc = allocator::BitMapAlloc::init(balloc_addr);
-    init_heap1();
+    let balloc = init_heap();
 
     // safety: the fdt_ptr needs to be valid. this is "guaranteed" by OpenSBI
     let fdt = unsafe { fdt::Fdt::from_ptr(fdt_ptr as *const u8) }.expect("could not parse fdt");
@@ -58,13 +66,8 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
 
     // map the kernel, stack and the heap onto the memory
     map_vitals(&mut mapper).expect("could not map vital memory");
-
-    // work in progress driver, redundent unless we wanna add multiple serial outputs
-    CharDriver::init(fdt, &mut mapper).expect("could not init uart driver");
-
-    // we setup pcie subsystem along with some basic drivers
-    let _pci = PciSubsystem::init(fdt, &mut mapper).expect("could not initialise PCI");
-    setup_pcie(fdt, &mut mapper);
+    // init PCIe and the most essential drivers
+    init_drivers(fdt, &mut mapper);
 
     #[cfg(test)]
     test_main();
@@ -99,6 +102,16 @@ fn map_vitals(mapper: &mut Mapper) -> Result<(), vmem::MapError> {
     Ok(())
 }
 
+fn init_drivers(fdt: fdt::Fdt, mapper: &mut Mapper) {
+    CharDriver::init(fdt, mapper).expect("could not init uart driver");
+
+    // we setup pcie subsystem along with some basic drivers
+    let mut pci = PciSubsystem::init(fdt, mapper).expect("could not initialise PCI");
+    pci.init_driver(virtio::ID_PAIR, virtio::init);
+}
+
+#[deprecated]
+#[allow(unused)]
 fn setup_pcie(fdt: fdt::Fdt, mapper: &mut Mapper) {
     // first we fetch the base address of the pcie configuration interface
     let ecam = pci::init(fdt, mapper).expect("could not initialise pci");

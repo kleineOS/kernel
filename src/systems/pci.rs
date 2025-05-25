@@ -2,6 +2,7 @@
 //! current version: 0.2-dev
 #![allow(unused)]
 
+use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 
 use crate::vmem::{Mapper, Perms};
@@ -18,10 +19,11 @@ const RANGE_CONFIG: u32 = 0b00;
 const REG_VENDOR_ID: u8 = 0;
 const REG_DEVICE_ID: u8 = 2;
 
+#[derive(Debug)]
 pub struct PciSubsystem {
     mem: PcieMemory,
     ecam: Ecam,
-    devices: Vec<Device>,
+    devices: BTreeMap<(u16, u16), Device>,
 }
 
 impl PciSubsystem {
@@ -30,18 +32,26 @@ impl PciSubsystem {
         mem.map_memory(mapper);
 
         let ecam = Ecam::init(mem.base_address);
-        let devices = enumerate_devices(ecam);
+        let devices = enumerate_devices(ecam)
+            .into_iter()
+            .map(|device| {
+                let vendor_id = device.vendor_id();
+                let device_id = device.device_id();
 
-        for device in &devices {
-            log::info!(
-                "[PCI] DEVICE FOUND: {:#06x}:{:#06x}",
-                device.vendor_id(),
-                device.device_id()
-            );
-        }
+                log::info!("[PCI] DEVICE FOUND: {vendor_id:04x}:{device_id:04x}");
+
+                ((vendor_id, device_id), device)
+            })
+            .collect();
 
         log::info!("[PCI] PCI subsystem has been initialised");
         Some(Self { mem, ecam, devices })
+    }
+
+    pub fn init_driver<F: FnOnce(Device)>(&mut self, id: (u16, u16), init_fn: F) {
+        if let Some(device) = self.devices.remove(&id) {
+            init_fn(device);
+        }
     }
 }
 
@@ -188,16 +198,17 @@ impl Ecam {
 
     fn get_device(&self, bus: u8, device: u8, func: u8) -> Option<Device> {
         let ecam = EcamLocked::init(*self, bus, device, func);
+        let header = self.read::<DeviceHeader>(bus, device, func, REG_VENDOR_ID);
 
-        match self.read::<u16>(bus, device, func, REG_VENDOR_ID) {
+        match header.vendor_id {
             0xFFFF => None,
-            _ => Some(Device { ecam }),
+            _ => Some(Device { ecam, header }),
         }
     }
 }
 
 #[derive(Debug)]
-struct EcamLocked {
+pub struct EcamLocked {
     ecam: Ecam,
     bus: u8,
     device: u8,
@@ -214,29 +225,81 @@ impl EcamLocked {
         }
     }
 
-    fn read<T>(&self, offset: u8) -> T {
+    pub fn read<T>(&self, offset: u8) -> T {
         self.ecam.read(self.bus, self.device, self.func, offset)
     }
 
-    fn write<T>(&self, offset: u8, value: T) {
+    pub fn write<T>(&self, offset: u8, value: T) {
         self.ecam
             .write(self.bus, self.device, self.func, offset, value);
     }
 }
 
 #[derive(Debug)]
-struct Device {
-    ecam: EcamLocked,
+pub struct Device {
+    pub ecam: EcamLocked,
+    header: DeviceHeader,
 }
 
 impl Device {
     pub fn vendor_id(&self) -> u16 {
-        self.ecam.read(REG_VENDOR_ID)
+        self.header.vendor_id
     }
 
     pub fn device_id(&self) -> u16 {
-        self.ecam.read(REG_DEVICE_ID)
+        self.header.device_id
     }
+
+    pub fn header_type(&self) -> HeaderType {
+        self.header.header_type
+    }
+
+    pub fn get_capabilities(&self) {
+        let cap_ptr = match self.header.header_type {
+            HeaderType::Pci2Cardbus => None,
+            _ => {
+                let pointer = self.ecam.read::<u8>(0x34);
+                if pointer != 0 { Some(pointer) } else { None }
+            }
+        };
+
+        self.enum_capabilities(cap_ptr);
+    }
+
+    fn enum_capabilities(&self, ptr: Option<u8>) {
+        if let Some(ptr) = ptr {
+            let cap = self.ecam.read::<Capabilities>(ptr);
+            log::info!("[PCI] [CAP] {cap:#x?}");
+            if cap.next_cap != 0 {
+                self.enum_capabilities(Some(cap.next_cap));
+            }
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct DeviceHeader {
+    vendor_id: u16,
+    device_id: u16,
+    command: u16,
+    status: u16,
+    revision_id: u8,
+    prog_if: u8,
+    subclass: u8,
+    class_code: u8,
+    cache_line_size: u8,
+    latency_timer: u8,
+    header_type: HeaderType,
+    bist: u8,
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, Copy)]
+pub enum HeaderType {
+    GeneralDevice = 0,
+    Pci2Pci = 1,
+    Pci2Cardbus = 2,
 }
 
 /// Enumerate PCI devices. Returns a Vector (heap allocated)
@@ -249,11 +312,18 @@ fn enumerate_devices(ecam: Ecam) -> Vec<Device> {
 /// Not the best way, as we are just looping over all devices and busses. But it is good enough for
 /// now, and it is not too inefficient as we do not really have a lot of devices in our VM
 fn bruteforce_enumerate<T: Extend<Device>>(ecam: Ecam, list: &mut T) {
-    let func = 0;
-
     for bus in 0..=255 {
         for device in 0..32 {
-            list.extend(ecam.get_device(bus, device, func));
+            for func in 0..8 {
+                list.extend(ecam.get_device(bus, device, func));
+            }
         }
     }
+}
+
+#[repr(C)]
+#[derive(Debug)]
+struct Capabilities {
+    cap_id: u8,
+    next_cap: u8,
 }

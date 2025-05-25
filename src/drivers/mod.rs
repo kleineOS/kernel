@@ -7,6 +7,8 @@ pub mod virtio_old;
 pub enum DriverError {
     #[error("Device not found")]
     DeviceNotFound,
+    #[error("Device is invalid: {reason}")]
+    InvalidDevice { reason: &'static str },
     #[error("Driver has not been initialised")]
     DriverUninitialised,
     #[error("Driver has already been initialised")]

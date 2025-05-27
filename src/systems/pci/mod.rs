@@ -2,9 +2,13 @@
 //! current version: 0.2-dev
 #![allow(unused)]
 
+mod ecam;
+mod pci_device;
+
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 
+pub use self::{ecam::*, pci_device::*};
 use crate::vmem::{Mapper, Perms};
 use crate::{PAGE_SIZE, round_down_by};
 
@@ -19,6 +23,8 @@ const RANGE_CONFIG: u32 = 0b00;
 const OFFSET_VENDOR_ID: u8 = 0x0;
 const OFFSET_DEVICE_ID: u8 = 0x2;
 const OFFSET_COMMAND: u8 = 0x4;
+// all six of these have a difference of 4 (bytes), as each field is 32-bits
+const OFFSET_BARS: [u8; 6] = [0x10, 0x14, 0x18, 0x1C, 0x20, 0x24];
 
 #[derive(Debug)]
 pub struct PciSubsystem {
@@ -57,6 +63,7 @@ impl PciSubsystem {
     }
 }
 
+/// Handles allocation of physical memory for PCI(e)
 #[derive(Debug)]
 #[allow(unused)]
 pub struct PciMemory {
@@ -115,6 +122,8 @@ impl PciMemory {
         })
     }
 
+    /// If you allocate what you dont need, I WILL spank you. I am not working on a deallocator for
+    /// something so fucking basic
     pub fn allocate_64bit(&mut self, size: usize) -> Option<usize> {
         let addr = self.mmio_64_bit?;
         let addr_max = self.mmio_max_64_bit?;
@@ -129,6 +138,8 @@ impl PciMemory {
         }
     }
 
+    /// If you allocate what you dont need, I WILL spank you. I am not working on a deallocator for
+    /// something so fucking basic. Yes, even if you are wasting 32-bit memory
     pub fn allocate_32bit(&mut self, size: usize) -> Option<usize> {
         let addr = self.mmio_32_bit?;
         let addr_max = self.mmio_max_32_bit?;
@@ -143,7 +154,7 @@ impl PciMemory {
         }
     }
 
-    pub fn map_memory(&self, mapper: &mut Mapper) {
+    fn map_memory(&self, mapper: &mut Mapper) {
         let base_mem_addr = self.base_address;
         let base_mem_pages = round_down_by(self.base_address_size, PAGE_SIZE) / PAGE_SIZE;
 
@@ -170,165 +181,12 @@ impl PciMemory {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct Ecam {
-    base_addr: usize,
-}
-
-impl Ecam {
-    fn init(base_addr: usize) -> Self {
-        Self { base_addr }
-    }
-
-    pub const fn address(&self, bus: u8, device: u8, func: u8, offset: u8) -> usize {
-        self.base_addr
-            + ((bus as usize) << 20)
-            + ((device as usize) << 15)
-            + ((func as usize) << 12)
-            + offset as usize
-    }
-
-    fn read<T>(&self, bus: u8, device: u8, func: u8, offset: u8) -> T {
-        let address = self.address(bus, device, func, offset);
-        unsafe { core::ptr::read_volatile(address as *const T) }
-    }
-
-    fn write<T>(&self, bus: u8, device: u8, func: u8, offset: u8, value: T) {
-        let address = self.address(bus, device, func, offset);
-        unsafe { core::ptr::write_volatile(address as *mut T, value) };
-    }
-
-    fn get_device(&self, bus: u8, device: u8, func: u8) -> Option<Device> {
-        let ecam = EcamLocked::init(*self, bus, device, func);
-        let header = self.read::<DeviceHeader>(bus, device, func, OFFSET_VENDOR_ID);
-
-        match header.vendor_id {
-            0xFFFF => None,
-            _ => Some(Device { ecam, header }),
-        }
-    }
-}
-
 #[derive(Debug)]
-pub struct EcamLocked {
-    ecam: Ecam,
-    bus: u8,
-    device: u8,
-    func: u8,
-}
-
-impl EcamLocked {
-    fn init(ecam: Ecam, bus: u8, device: u8, func: u8) -> Self {
-        Self {
-            ecam,
-            bus,
-            device,
-            func,
-        }
-    }
-
-    pub fn read<T>(&self, offset: u8) -> T {
-        self.ecam.read(self.bus, self.device, self.func, offset)
-    }
-
-    pub fn write<T>(&self, offset: u8, value: T) {
-        self.ecam
-            .write(self.bus, self.device, self.func, offset, value);
-    }
-}
-
-#[derive(Debug)]
-pub struct Device {
-    pub ecam: EcamLocked,
-    header: DeviceHeader,
-}
-
-impl Device {
-    pub fn vendor_id(&self) -> u16 {
-        self.header.vendor_id
-    }
-
-    pub fn device_id(&self) -> u16 {
-        self.header.device_id
-    }
-
-    pub fn header_type(&self) -> HeaderType {
-        self.header.header_type
-    }
-
-    pub fn disable_io_space(&self) {
-        let mut cmd = self.header.command;
-        cmd &= 0b0; // we turn OFF bit 0
-        self.ecam.write(OFFSET_COMMAND, cmd);
-    }
-
-    // putting this here so I wont wonder in the future as to why "enable_io_space" is not
-    // available
-    #[deprecated = "RISC-V does not support PIO, you probably dont need this"]
-    pub fn enable_io_space(&self) {
-        panic!("RISC-V does not support PIO, you probably dont need this");
-    }
-
-    pub fn disable_mem_space(&self) {
-        let mut cmd = self.header.command;
-        cmd &= 0b01; // we turn OFF bit 1
-        self.ecam.write(OFFSET_COMMAND, cmd);
-    }
-
-    pub fn enable_mem_space(&self) {
-        let mut cmd = self.header.command;
-        cmd |= 0b10; // we turn ON bit 1
-        self.ecam.write(OFFSET_COMMAND, cmd);
-    }
-
-    pub fn get_capabilities<T, V: Extend<T>>(&self, list: &mut V) {
-        let offset = match self.header.header_type {
-            HeaderType::Pci2Cardbus => 0x14,
-            _ => 0x34,
-        };
-
-        let pointer = self.ecam.read::<u8>(offset);
-        let cap_ptr = if pointer != 0 { Some(pointer) } else { None };
-
-        self.enum_capabilities(cap_ptr, list);
-    }
-
-    fn enum_capabilities<T, V: Extend<T>>(&self, ptr: Option<u8>, list: &mut V) {
-        if let Some(ptr) = ptr {
-            let cap = self.ecam.read::<Capabilities<T>>(ptr);
-
-            list.extend(Some(cap.data));
-
-            if cap.next_cap != 0 {
-                self.enum_capabilities(Some(cap.next_cap), list);
-            }
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct DeviceHeader {
-    vendor_id: u16,
-    device_id: u16,
-    command: u16,
-    status: u16,
-    revision_id: u8,
-    prog_if: u8,
-    subclass: u8,
-    class_code: u8,
-    cache_line_size: u8,
-    latency_timer: u8,
-    header_type: HeaderType,
-    bist: u8,
-}
-
-#[repr(u8)]
-#[derive(Debug, Clone, Copy)]
-pub enum HeaderType {
-    GeneralDevice = 0,
-    Pci2Pci = 1,
-    Pci2Cardbus = 2,
+#[repr(C, packed)]
+struct Capabilities<T> {
+    cap_id: u8,
+    next_cap: u8,
+    data: T,
 }
 
 /// Enumerate PCI devices. Returns a Vector (heap allocated)
@@ -348,12 +206,4 @@ fn bruteforce_enumerate<T: Extend<Device>>(ecam: Ecam, list: &mut T) {
             }
         }
     }
-}
-
-#[derive(Debug)]
-#[repr(C, packed)]
-pub struct Capabilities<T> {
-    cap_id: u8,
-    next_cap: u8,
-    pub data: T,
 }

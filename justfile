@@ -27,6 +27,9 @@ create-disk: build-tools
 @ls-disk:
     mdir -i disk.img ::
 
+bugs:
+    grep -rE  "TODO|HACK|FIXME" **/*/*.rs
+
 # build u-boot
 [working-directory: "target/uboot"]
 build-uboot: build-tools-full (build-dir "uboot")

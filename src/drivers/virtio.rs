@@ -28,15 +28,18 @@ fn init_driver(device: &Device, mem: &mut PciMemory) -> Result<(), DriverError> 
 
     // to quote osdev.wiki:
     // > Before attempting to read the information about the BAR, make sure to disable both I/O and
-    // > memory decode in the command byte. You can restore the original value after completing the
-    // > BAR info read. This is needed as some devices are known to decode the write of all ones to
-    // > the register as an (unintended) access.
+    // > memory decode in the command byte. /* ... */ This is needed as some devices are known to
+    // > decode the write of all ones to the register as an (unintended) access.
     device.disable_io_space();
     device.disable_mem_space();
 
     mem.allocate_64bit(1);
 
-    let _bar = data.bar;
+    let bar = data.bar;
+    let (address, prefetchable, is_64_bit, is_pio) = device.get_bar_size(bar);
+    log::info!(
+        "address={address:#x}, prefetchable={prefetchable}, is_64_bit={is_64_bit}, is_pio={is_pio}"
+    );
 
     device.enable_mem_space();
 

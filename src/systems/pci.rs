@@ -50,9 +50,9 @@ impl PciSubsystem {
         Some(Self { mem, ecam, devices })
     }
 
-    pub fn init_driver<F: FnOnce(Device, &PciMemory)>(&mut self, id: (u16, u16), init_fn: F) {
+    pub fn init_driver<F: FnOnce(Device, &mut PciMemory)>(&mut self, id: (u16, u16), init_fn: F) {
         if let Some(device) = self.devices.remove(&id) {
-            init_fn(device, &self.mem);
+            init_fn(device, &mut self.mem);
         }
     }
 }

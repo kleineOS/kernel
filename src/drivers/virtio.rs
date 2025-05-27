@@ -8,7 +8,7 @@ use crate::systems::pci::{Device, PciMemory};
 
 pub const ID_PAIR: (u16, u16) = (0x1af4, 0x1001);
 
-pub fn init(device: Device, mem: &PciMemory) {
+pub fn init(device: Device, mem: &mut PciMemory) {
     log::info!("[VIRTIO] initialising block device driver");
     match init_driver(&device, mem) {
         Ok(_) => log::info!("[VIRTIO] driver init was a success!!"),
@@ -16,7 +16,7 @@ pub fn init(device: Device, mem: &PciMemory) {
     }
 }
 
-fn init_driver(device: &Device, mem: &PciMemory) -> Result<(), DriverError> {
+fn init_driver(device: &Device, mem: &mut PciMemory) -> Result<(), DriverError> {
     let mut cap = Vec::<CapData>::new();
     device.get_capabilities::<CapData, Vec<CapData>>(&mut cap);
 
@@ -33,6 +33,8 @@ fn init_driver(device: &Device, mem: &PciMemory) -> Result<(), DriverError> {
     // > the register as an (unintended) access.
     device.disable_io_space();
     device.disable_mem_space();
+
+    mem.allocate_64bit(1);
 
     let _bar = data.bar;
 

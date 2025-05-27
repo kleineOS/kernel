@@ -17,6 +17,16 @@ impl Device {
         self.header.header_type
     }
 
+    pub fn read_bar(&self, bar_nr: u8) -> u32 {
+        let offset = super::OFFSET_BARS[bar_nr as usize];
+        self.ecam.read(offset)
+    }
+
+    pub fn write_bar(&self, bar_nr: u8, value: u32) {
+        let offset = super::OFFSET_BARS[bar_nr as usize];
+        self.ecam.write(offset, value);
+    }
+
     pub fn disable_io_space(&self) {
         let mut cmd = self.header.command;
         cmd &= 0b0; // we turn OFF bit 0
@@ -50,34 +60,28 @@ impl Device {
     }
 
     /// # Returns
-    /// -> (address, prefetchable, is_64_bit, is_pio)
-    /// HACK: ideally I return an Enum, even if PIO is not supported
-    pub fn get_bar_size(&self, bar_nr: u8) -> (u32, bool, bool, bool) {
-        assert!(bar_nr <= 5, "the bar_nr provided is too big (max 5)");
-        let bar_offset = super::OFFSET_BARS[bar_nr as usize];
+    /// -> (is_64_bits, size)
+    /// TODO: create and use self.write_bar and self.read_bar
+    pub fn get_bar_size(&self, bar_nr: u8) -> (bool, u32) {
+        let original: u32 = self.read_bar(bar_nr);
 
-        let value = {
-            let original: u32 = self.ecam.read(bar_offset);
-            self.ecam.write(bar_offset, u32::MAX);
-            let value: u32 = self.ecam.read(bar_offset);
-            self.ecam.write(bar_offset, original);
-            value
+        self.write_bar(bar_nr, u32::MAX);
+        let new_value = self.read_bar(bar_nr);
+
+        self.write_bar(bar_nr, original);
+
+        let is_pio = (new_value & 1) != 0;
+        assert!(!is_pio, "RISC-V does not support PIO");
+
+        let type_bits = (new_value >> 1) & 0b11;
+        let is_64_bits = match type_bits {
+            0x0 => false,
+            0x2 => true,
+            _ => unreachable!(),
         };
 
-        log::info!("{value:#x}");
-
-        let is_pio = (value & 0x1) > 0;
-        if !is_pio {
-            // Memory space BAR
-            let type_bits = (value & 0x6) >> 1; // bits 2:1
-            let is_64_bit = type_bits == 0x2;
-            assert!(is_64_bit || (type_bits == 0x0), "must be 0x2 or 0x0");
-            let prefetchable = ((value & 0x8) >> 3) > 0; // bit 3
-            let address = value & 0xFFFFFFF0; // clear lower 4 bits
-            (address, prefetchable, is_64_bit, is_pio)
-        } else {
-            panic!("PIO is not supported on RISC-V");
-        }
+        // the first few bits are for conveying info to us, the os
+        (is_64_bits, !(new_value & 0xFFFFFFF0) + 1)
     }
 
     fn enum_capabilities<T, V: Extend<T>>(&self, ptr: Option<u8>, list: &mut V) {

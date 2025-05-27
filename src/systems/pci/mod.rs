@@ -124,31 +124,22 @@ impl PciMemory {
 
     /// If you allocate what you dont need, I WILL spank you. I am not working on a deallocator for
     /// something so fucking basic
-    pub fn allocate_64bit(&mut self, size: usize) -> Option<usize> {
-        let addr = self.mmio_64_bit?;
-        let addr_max = self.mmio_max_64_bit?;
+    pub fn allocate(&mut self, size: usize, is_64_bits: bool) -> Option<usize> {
+        let (address_base, addr_max) = if is_64_bits {
+            (self.mmio_64_bit?, self.mmio_max_64_bit?)
+        } else {
+            (self.mmio_32_bit?, self.mmio_max_32_bit?)
+        };
 
-        let next_addr = addr + size;
+        let alignment = size;
+
+        let address = (address_base + alignment - 1) & !(alignment - 1);
+
+        let next_addr = address + size;
 
         if next_addr < addr_max {
             self.mmio_64_bit = Some(next_addr);
-            Some(addr)
-        } else {
-            None
-        }
-    }
-
-    /// If you allocate what you dont need, I WILL spank you. I am not working on a deallocator for
-    /// something so fucking basic. Yes, even if you are wasting 32-bit memory
-    pub fn allocate_32bit(&mut self, size: usize) -> Option<usize> {
-        let addr = self.mmio_32_bit?;
-        let addr_max = self.mmio_max_32_bit?;
-
-        let next_addr = addr + size;
-
-        if next_addr < addr_max {
-            self.mmio_32_bit = Some(next_addr);
-            Some(addr)
+            Some(address)
         } else {
             None
         }

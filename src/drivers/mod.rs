@@ -11,6 +11,8 @@ pub enum DriverError {
     InvalidDevice { reason: &'static str },
     #[error("Driver has not been initialised")]
     DriverUninitialised,
+    #[error("Out of PCIe memory")]
+    OutOfMemoryPci,
     #[error("Driver has already been initialised")]
     AlreadyInitialised,
     #[error("Unimplimented functionality")]

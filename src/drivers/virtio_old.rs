@@ -53,8 +53,8 @@ impl BlkDriver {
         ecam.write_register(bar_register, address);
         ecam.write_word(0x04, BIT_DISABLE_INTERRUPT | BIT_ENABLE_MMIO);
 
-        let _config = address as *const VirtioPciCommonCfg;
-        //unsafe { log::info!("config={:#x?}", *config) };
+        let config = address as *const VirtioPciCommonCfg;
+        unsafe { log::info!("config={:#x?}", *config) };
     }
 
     fn enumerate_capabilities(&self, ecam: PcieEcamLocked, base_addr: usize) {
@@ -120,7 +120,7 @@ fn get_bar_size(ecam: PcieEcamLocked, register: u8) -> u32 {
 
 #[repr(C, packed)]
 #[derive(Debug)]
-struct VirtioPciCommonCfg {
+pub struct VirtioPciCommonCfg {
     /* About the whole device. */
     device_feature_select: u32, // RW
     device_feature: u32,        // RO

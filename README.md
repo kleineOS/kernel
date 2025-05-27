@@ -41,6 +41,10 @@ DEBUG: KERNEL STARTING ON HART#0
 
 I do not have any plans of extending architecture support. I am very inexperienced when it comes to osdev, and juggling between multiple CPUs will put too much strain on my peanut noggin. Instead, I will (try to) put `// TODO-ARCH-RISCV` comments wherever I am hardcoding RISC-V specific behaviour. Once I have enough of these comments, I will abstract all arch specific stuff in an `arch` module, and make it generic over a trait (if such a thing is possible even).
 
+## Contributing
+
+Contributions are welcome! Do keep in mind that this is an educational project for me, so I might end up asking too many questions about your code. Do not submit patches if you cannot explain it! If you want to find things to contribute, run `grep -rE  "TODO|HACK|FIXME" **/*/*.rs` in the root of this project.
+
 ---
 
 All code is licensed under the Apache-2.0 license

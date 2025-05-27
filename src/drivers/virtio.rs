@@ -1,70 +1,67 @@
 //! VirtIO Block Device driver
 //! current version: 0.2-dev
 
+use alloc::vec::Vec;
+
 use super::DriverError;
-use crate::systems::pci::{Device, HeaderType};
+use crate::systems::pci::{Device, PciMemory};
 
 pub const ID_PAIR: (u16, u16) = (0x1af4, 0x1001);
 
-pub fn init(device: Device) {
+pub fn init(device: Device, mem: &PciMemory) {
     log::info!("[VIRTIO] initialising block device driver");
-    match init_driver(&device) {
+    match init_driver(&device, mem) {
         Ok(_) => log::info!("[VIRTIO] driver init was a success!!"),
         Err(error) => log::error!("[VIRTIO] driver init was a failure: {error}"),
     }
 }
 
-fn init_driver(device: &Device) -> Result<(), DriverError> {
-    let devinfo = DeviceInfo::get_general_info(device)?;
+fn init_driver(device: &Device, mem: &PciMemory) -> Result<(), DriverError> {
+    let mut cap = Vec::<CapData>::new();
+    device.get_capabilities::<CapData, Vec<CapData>>(&mut cap);
 
-    device.get_capabilities();
+    let config: Option<&CapData> = cap.iter().find(|e| e.typ == CapDataType::Common);
+    let data = match config {
+        Some(&data) => data,
+        None => unreachable!(),
+    };
 
-    devinfo.read_bars();
+    // to quote osdev.wiki:
+    // > Before attempting to read the information about the BAR, make sure to disable both I/O and
+    // > memory decode in the command byte. You can restore the original value after completing the
+    // > BAR info read. This is needed as some devices are known to decode the write of all ones to
+    // > the register as an (unintended) access.
+    device.disable_io_space();
+    device.disable_mem_space();
+
+    let _bar = data.bar;
+
+    device.enable_mem_space();
 
     Ok(())
 }
 
-/// I dont know if this needs to be here or in the PCI subsystem, will sort it out when I have one
-/// more driver. I will move all the shared logic to the PCI subsystem
-struct DeviceInfo<'a> {
-    device: &'a Device,
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(unused)]
+enum CapDataType {
+    Common = 1,
+    Notify = 2,
+    Isr = 3,
+    Device = 4,
+    Pci = 5,
+    SharedMemory = 8,
+    Vendor = 9,
 }
 
-impl<'a> DeviceInfo<'a> {
-    fn get_general_info(device: &'a Device) -> Result<Self, DriverError> {
-        match device.header_type() {
-            HeaderType::GeneralDevice => (),
-            HeaderType::Pci2Pci => {
-                let reason = "Expected GeneralDevice but got PCI to PCI bridge";
-                return Err(DriverError::InvalidDevice { reason });
-            }
-            HeaderType::Pci2Cardbus => {
-                let reason = "Expected GeneralDevice but got PCI to Cardbus bridge";
-                return Err(DriverError::InvalidDevice { reason });
-            }
-        };
-
-        Ok(Self { device })
-    }
-
-    #[allow(unused)]
-    fn read_bars(&self) {
-        let ecam = &self.device.ecam;
-        ecam.write::<u32>(0x20, u32::MAX);
-        let bars = ecam.read::<[u32; 6]>(0x10);
-
-        for bar in bars {
-            let is_pio = bar & 0b1 > 0; // bit 0
-            let typ = (bar >> 1) & 0b11; // bits 2:1
-            let is_prefetchable = (bar >> 3) & 0b1 > 0; // bits 2:1
-
-            let addr = bar & 0xFFFFFFF0;
-
-            // log::info!(
-            //     "BAR[{addr:#x}]: is_pio={is_pio}, typ={typ}, is_prefetchable={is_prefetchable}",
-            // );
-        }
-
-        //log::info!("BARS={bars:#018x?}");
-    }
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy)]
+struct CapData {
+    len: u8,
+    typ: CapDataType,
+    bar: u8,
+    id: u8,
+    _padding: [u8; 2],
+    offset: u32,
+    length: u32,
 }

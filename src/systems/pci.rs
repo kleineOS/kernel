@@ -16,22 +16,24 @@ const RANGE_MMIO_32_BIT: u32 = 0b11;
 const RANGE_PIO: u32 = 0b01;
 const RANGE_CONFIG: u32 = 0b00;
 
-const REG_VENDOR_ID: u8 = 0;
-const REG_DEVICE_ID: u8 = 2;
+const OFFSET_VENDOR_ID: u8 = 0x0;
+const OFFSET_DEVICE_ID: u8 = 0x2;
+const OFFSET_COMMAND: u8 = 0x4;
 
 #[derive(Debug)]
 pub struct PciSubsystem {
-    mem: PcieMemory,
+    mem: PciMemory,
     ecam: Ecam,
     devices: BTreeMap<(u16, u16), Device>,
 }
 
 impl PciSubsystem {
     pub fn init(fdt: fdt::Fdt, mapper: &mut Mapper) -> Option<Self> {
-        let mem = PcieMemory::parse_from_fdt(fdt)?;
+        let mem = PciMemory::parse_from_fdt(fdt)?;
         mem.map_memory(mapper);
 
         let ecam = Ecam::init(mem.base_address);
+
         let devices = enumerate_devices(ecam)
             .into_iter()
             .map(|device| {
@@ -48,16 +50,16 @@ impl PciSubsystem {
         Some(Self { mem, ecam, devices })
     }
 
-    pub fn init_driver<F: FnOnce(Device)>(&mut self, id: (u16, u16), init_fn: F) {
+    pub fn init_driver<F: FnOnce(Device, &PciMemory)>(&mut self, id: (u16, u16), init_fn: F) {
         if let Some(device) = self.devices.remove(&id) {
-            init_fn(device);
+            init_fn(device, &self.mem);
         }
     }
 }
 
 #[derive(Debug)]
 #[allow(unused)]
-pub struct PcieMemory {
+pub struct PciMemory {
     base_address: usize,
     base_address_size: usize,
 
@@ -67,8 +69,8 @@ pub struct PcieMemory {
     mmio_max_64_bit: Option<usize>,
 }
 
-impl PcieMemory {
-    fn parse_from_fdt(fdt: fdt::Fdt) -> Option<PcieMemory> {
+impl PciMemory {
+    fn parse_from_fdt(fdt: fdt::Fdt) -> Option<PciMemory> {
         let nodes = fdt.find_compatible(COMPATIBLE)?;
         let memory = nodes.reg()?.next()?;
 
@@ -102,7 +104,7 @@ impl PcieMemory {
             };
         }
 
-        Some(PcieMemory {
+        Some(PciMemory {
             base_address,
             base_address_size,
 
@@ -198,7 +200,7 @@ impl Ecam {
 
     fn get_device(&self, bus: u8, device: u8, func: u8) -> Option<Device> {
         let ecam = EcamLocked::init(*self, bus, device, func);
-        let header = self.read::<DeviceHeader>(bus, device, func, REG_VENDOR_ID);
+        let header = self.read::<DeviceHeader>(bus, device, func, OFFSET_VENDOR_ID);
 
         match header.vendor_id {
             0xFFFF => None,
@@ -254,24 +256,51 @@ impl Device {
         self.header.header_type
     }
 
-    pub fn get_capabilities(&self) {
-        let cap_ptr = match self.header.header_type {
-            HeaderType::Pci2Cardbus => None,
-            _ => {
-                let pointer = self.ecam.read::<u8>(0x34);
-                if pointer != 0 { Some(pointer) } else { None }
-            }
-        };
-
-        self.enum_capabilities(cap_ptr);
+    pub fn disable_io_space(&self) {
+        let mut cmd = self.header.command;
+        cmd &= 0b0; // we turn OFF bit 0
+        self.ecam.write(OFFSET_COMMAND, cmd);
     }
 
-    fn enum_capabilities(&self, ptr: Option<u8>) {
+    // putting this here so I wont wonder in the future as to why "enable_io_space" is not
+    // available
+    #[deprecated = "RISC-V does not support PIO, you probably dont need this"]
+    pub fn enable_io_space(&self) {
+        panic!("RISC-V does not support PIO, you probably dont need this");
+    }
+
+    pub fn disable_mem_space(&self) {
+        let mut cmd = self.header.command;
+        cmd &= 0b01; // we turn OFF bit 1
+        self.ecam.write(OFFSET_COMMAND, cmd);
+    }
+
+    pub fn enable_mem_space(&self) {
+        let mut cmd = self.header.command;
+        cmd |= 0b10; // we turn ON bit 1
+        self.ecam.write(OFFSET_COMMAND, cmd);
+    }
+
+    pub fn get_capabilities<T, V: Extend<T>>(&self, list: &mut V) {
+        let offset = match self.header.header_type {
+            HeaderType::Pci2Cardbus => 0x14,
+            _ => 0x34,
+        };
+
+        let pointer = self.ecam.read::<u8>(offset);
+        let cap_ptr = if pointer != 0 { Some(pointer) } else { None };
+
+        self.enum_capabilities(cap_ptr, list);
+    }
+
+    fn enum_capabilities<T, V: Extend<T>>(&self, ptr: Option<u8>, list: &mut V) {
         if let Some(ptr) = ptr {
-            let cap = self.ecam.read::<Capabilities>(ptr);
-            log::info!("[PCI] [CAP] {cap:#x?}");
+            let cap = self.ecam.read::<Capabilities<T>>(ptr);
+
+            list.extend(Some(cap.data));
+
             if cap.next_cap != 0 {
-                self.enum_capabilities(Some(cap.next_cap));
+                self.enum_capabilities(Some(cap.next_cap), list);
             }
         }
     }
@@ -321,9 +350,10 @@ fn bruteforce_enumerate<T: Extend<Device>>(ecam: Ecam, list: &mut T) {
     }
 }
 
-#[repr(C)]
 #[derive(Debug)]
-struct Capabilities {
+#[repr(C, packed)]
+pub struct Capabilities<T> {
     cap_id: u8,
     next_cap: u8,
+    pub data: T,
 }

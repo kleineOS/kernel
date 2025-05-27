@@ -9,7 +9,6 @@ extern crate alloc;
 mod allocator;
 mod drivers;
 mod kinit;
-mod pci;
 mod proc;
 mod riscv;
 mod symbols;
@@ -20,13 +19,11 @@ mod writer;
 
 use core::panic::PanicInfo;
 
-use drivers::virtio;
 use linked_list_allocator::LockedHeap;
 use spin::Mutex;
 
 use crate::allocator::BitMapAlloc;
-use crate::drivers::{uart::CharDriver, virtio_old};
-use crate::pci::PcieManager;
+use crate::drivers::uart::CharDriver;
 use crate::systems::pci::PciSubsystem;
 use crate::vmem::{Mapper, Perms};
 
@@ -107,23 +104,7 @@ fn init_drivers(fdt: fdt::Fdt, mapper: &mut Mapper) {
 
     // we setup pcie subsystem along with some basic drivers
     let mut pci = PciSubsystem::init(fdt, mapper).expect("could not initialise PCI");
-    pci.init_driver(virtio::ID_PAIR, virtio::init);
-}
-
-#[deprecated]
-#[allow(unused)]
-fn setup_pcie(fdt: fdt::Fdt, mapper: &mut Mapper) {
-    // first we fetch the base address of the pcie configuration interface
-    let ecam = pci::init(fdt, mapper).expect("could not initialise pci");
-
-    // then we create a manager to handle initialisation of PCIe drivers
-    let mut pcie_manager = PcieManager::new(ecam);
-
-    // the following section needs a callback that ANY driver can call from the kernel
-    let mut driver = virtio_old::BlkDriver::new();
-    pcie_manager.register_driver(&mut driver);
-
-    pcie_manager.init_drivers(fdt);
+    pci.init_driver(drivers::virtio::ID_PAIR, drivers::virtio::init);
 }
 
 #[inline]

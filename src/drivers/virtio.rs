@@ -3,7 +3,7 @@
 
 use alloc::vec::Vec;
 
-use super::{DriverError, virtio_old::VirtioPciCommonCfg};
+use super::DriverError;
 use crate::systems::pci::{Device, PciMemory};
 
 pub const ID_PAIR: (u16, u16) = (0x1af4, 0x1001);
@@ -20,6 +20,7 @@ pub fn init(device: Device, mem: &mut PciMemory) {
     };
 
     log::info!("[VIRTIO] driver init was a success!!");
+    log::debug!("[VIRTIO] config={config:#x?}");
 }
 
 fn init_pci(
@@ -92,4 +93,33 @@ struct CapData {
     _padding: [u8; 2],
     offset: u32,
     length: u32,
+}
+
+#[repr(C, packed)]
+#[derive(Debug)]
+struct VirtioPciCommonCfg {
+    /* About the whole device. */
+    device_feature_select: u32, // RW
+    device_feature: u32,        // RO
+    driver_feature_select: u32, // RW
+    driver_feature: u32,        // RW
+    config_msix_vector: u16,    // RW
+    num_queues: u16,            // RO
+    device_status: u8,          // RW
+    config_generation: u8,      // RO
+
+    /* About a specific virtqueue. */
+    queue_select: u16,            // RW
+    queue_msix_vector: u16,       // RW
+    queue_enable: u16,            // RW
+    queue_notify_off: u16,        // RO
+    queue_desc: u64,              // RW
+    queue_driver: u64,            // RW
+    queue_device: u64,            // RW
+    queue_notif_config_data: u16, // RO
+    queue_reset: u16,             // RW
+
+    /* About the administration virtqueue. */
+    admin_queue_index: u16, // RO
+    admin_queue_num: u16,   // RO
 }

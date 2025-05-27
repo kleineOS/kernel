@@ -37,6 +37,10 @@ $ cargo run
 DEBUG: KERNEL STARTING ON HART#0
 ```
 
+## Architecture support
+
+I do not have any plans of extending architecture support. I am very inexperienced when it comes to osdev, and juggling between multiple CPUs will put too much strain on my peanut noggin. Instead, I will (try to) put `// TODO-ARCH-RISCV` comments wherever I am hardcoding RISC-V specific behaviour. Once I have enough of these comments, I will abstract all arch specific stuff in an `arch` module, and make it generic over a trait (if such a thing is possible even).
+
 ---
 
 All code is licensed under the Apache-2.0 license

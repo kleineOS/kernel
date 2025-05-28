@@ -20,13 +20,10 @@ pub fn init(device: Device, mem: &mut PciMemory) {
     };
 
     log::info!("[VIRTIO] driver init was a success!!");
-    log::debug!("[VIRTIO] config={config:#x?}");
+    unsafe { log::debug!("[VIRTIO] config={:#x?}", *config.inner) };
 }
 
-fn init_pci(
-    device: &Device,
-    mem: &mut PciMemory,
-) -> Result<&'static mut VirtioPciCommonCfg, DriverError> {
+fn init_pci(device: &Device, mem: &mut PciMemory) -> Result<VirtioPciCommonCfg, DriverError> {
     let mut cap = Vec::<CapData>::new();
     device.get_capabilities::<CapData, Vec<CapData>>(&mut cap);
 
@@ -64,8 +61,7 @@ fn init_pci(
 
     device.enable_mem_space();
 
-    let config = (address + data.offset as usize) as *mut VirtioPciCommonCfg;
-    let config = unsafe { &mut (*config) };
+    let config = unsafe { VirtioPciCommonCfg::from_raw(address + data.offset as usize) };
 
     Ok(config)
 }
@@ -95,9 +91,20 @@ struct CapData {
     length: u32,
 }
 
+struct VirtioPciCommonCfg {
+    inner: *mut VirtioPciCommonCfgRaw,
+}
+
+impl VirtioPciCommonCfg {
+    pub unsafe fn from_raw(addr: usize) -> Self {
+        let inner = addr as *mut VirtioPciCommonCfgRaw;
+        Self { inner }
+    }
+}
+
 #[repr(C, packed)]
 #[derive(Debug)]
-struct VirtioPciCommonCfg {
+struct VirtioPciCommonCfgRaw {
     /* About the whole device. */
     device_feature_select: u32, // RW
     device_feature: u32,        // RO

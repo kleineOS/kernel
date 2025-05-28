@@ -35,17 +35,6 @@ pub const PAGE_SIZE: usize = 0x1000; // 4096
 pub const HEAP1_SIZE: usize = 1024 * 1024 * 1024;
 pub const STACK_PAGES: usize = 1;
 
-fn init_heap() -> Mutex<BitMapAlloc> {
-    let balloc_addr = unsafe { symbols::HEAP0_TOP };
-    let balloc = allocator::BitMapAlloc::init(balloc_addr);
-
-    // global allocator for `alloc`
-    let heap_start = unsafe { symbols::HEAP1_TOP as *mut u8 };
-    unsafe { ALLOCATOR.lock().init(heap_start, HEAP1_SIZE) }
-
-    balloc
-}
-
 #[unsafe(no_mangle)]
 extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
     println!("\n\n\n^w^ welcome to my operating system");
@@ -71,6 +60,17 @@ extern "C" fn start(hartid: usize, fdt_ptr: usize) -> ! {
 
     kinit::pre_kinit(&mut balloc, fdt);
     kinit::kinit(hartid);
+}
+
+fn init_heap() -> Mutex<BitMapAlloc> {
+    let balloc_addr = unsafe { symbols::HEAP0_TOP };
+    let balloc = allocator::BitMapAlloc::init(balloc_addr);
+
+    // global allocator for `alloc`
+    let heap_start = unsafe { symbols::HEAP1_TOP as *mut u8 };
+    unsafe { ALLOCATOR.lock().init(heap_start, HEAP1_SIZE) }
+
+    balloc
 }
 
 fn map_vitals(mapper: &mut Mapper) -> Result<(), vmem::MapError> {

@@ -21,6 +21,8 @@ pub enum DriverError {
         #[from]
         error: crate::vmem::MapError,
     },
+    #[error("Driver error: {0}")]
+    OtherError(&'static str),
 }
 
 pub struct MemoryRange {

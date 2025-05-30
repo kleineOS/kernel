@@ -1,6 +1,8 @@
 //! VirtIO Block Device driver
 //! current version: 0.2-dev
 
+use alloc::collections::BTreeMap;
+use alloc::collections::BTreeSet;
 use alloc::vec::Vec;
 
 use super::DriverError;
@@ -29,7 +31,15 @@ fn init_pci(device: &Device, mem: &mut PciMemory) -> Result<VirtioPciCommonCfg, 
     let mut cap = Vec::<CapData>::new();
     device.get_capabilities::<CapData, Vec<CapData>>(&mut cap);
 
-    cap.iter().for_each(|e| log::debug!("{e:x?}"));
+    // cap.iter().for_each(|e| log::debug!("{e:x?}"));
+
+    let bars: BTreeSet<u8> = cap
+        .iter()
+        .filter(|cap| cap.length > 0)
+        .map(|cap| cap.bar)
+        .collect();
+    let bar_addrs = allocate_bar_addrs(bars, device, mem)?;
+
     let config: Option<&CapData> = cap.iter().find(|e| e.typ == CapDataType::Common);
     let data = match config {
         Some(&data) => data,
@@ -43,30 +53,45 @@ fn init_pci(device: &Device, mem: &mut PciMemory) -> Result<VirtioPciCommonCfg, 
     device.disable_io_space();
     device.disable_mem_space();
 
-    let bar_nr = data.bar;
-    let (is_64_bits, size) = device.get_bar_size(bar_nr);
-
-    let address = mem.allocate(size as usize, is_64_bits);
-    let address = address.ok_or(DriverError::OutOfMemoryPci)?;
-
-    if is_64_bits {
-        let addr_hi = (address >> 32) as u32;
-        let addr_lo = address as u32;
-
-        assert_eq!(address, ((addr_hi as usize) << 32) | (addr_lo as usize));
-
-        device.write_bar(bar_nr + 1, addr_hi);
-        device.write_bar(bar_nr, addr_lo);
-    } else {
-        log::warn!("[VIRTIO] 32-bit memory address are not tested, but the device requests it");
-        device.write_bar(bar_nr, address as u32);
-    }
-
     device.enable_mem_space();
 
+    let address = bar_addrs.get(&data.bar).ok_or(DriverError::OtherError(
+        "address for bar has not been allocated",
+    ))?;
     let config = unsafe { VirtioPciCommonCfg::from_raw(address + data.offset as usize) };
 
     Ok(config)
+}
+
+fn allocate_bar_addrs(
+    bars: BTreeSet<u8>,
+    device: &Device,
+    mem: &mut PciMemory,
+) -> Result<BTreeMap<u8, usize>, DriverError> {
+    let mut bar_addrs = BTreeMap::<u8, usize>::new();
+    for bar_nr in bars {
+        let (is_64_bits, size) = device.get_bar_size(bar_nr);
+
+        let address = mem.allocate(size as usize, is_64_bits);
+        let address = address.ok_or(DriverError::OutOfMemoryPci)?;
+
+        bar_addrs.insert(bar_nr, address);
+
+        if is_64_bits {
+            let addr_hi = (address >> 32) as u32;
+            let addr_lo = address as u32;
+
+            assert_eq!(address, ((addr_hi as usize) << 32) | (addr_lo as usize));
+
+            device.write_bar(bar_nr + 1, addr_hi);
+            device.write_bar(bar_nr, addr_lo);
+        } else {
+            log::warn!("[VIRTIO] 32-bit memory address are not tested, but the device requests it");
+            device.write_bar(bar_nr, address as u32);
+        }
+    }
+
+    Ok(bar_addrs)
 }
 
 #[repr(u8)]

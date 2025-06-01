@@ -1,7 +1,6 @@
-//! VirtIO Block Device driver
+//! VirtIO General PCI driver
 //! current version: 0.2-dev
 
-use alloc::collections::BTreeMap;
 use alloc::collections::BTreeSet;
 use alloc::vec::Vec;
 
@@ -12,7 +11,7 @@ use crate::systems::pci::{Device, PciMemory};
 pub const ID_PAIR: (u16, u16) = (0x1af4, 0x1001);
 
 pub fn init(device: Device, mem: &mut PciMemory) {
-    log::info!("[VIRTIO] initialising block device driver");
+    log::info!("[VIRTIO] initialising VirtIO PCI driver");
 
     let config = match init_pci(&device, mem) {
         Ok(config) => config,
@@ -24,36 +23,30 @@ pub fn init(device: Device, mem: &mut PciMemory) {
 
     log::info!("[VIRTIO] driver init was a success!!");
     config.boot();
-    unsafe { log::debug!("[VIRTIO] config={:#x?}", *config.inner) };
+    unsafe {
+        log::info!(
+            "[VIRTOO] VirtIO device is now ready for I/O operations {:#x?}",
+            *config.inner
+        )
+    };
 }
 
 fn init_pci(device: &Device, mem: &mut PciMemory) -> Result<VirtioPciCommonCfg, DriverError> {
     let mut cap = Vec::<CapData>::new();
     device.get_capabilities::<CapData, Vec<CapData>>(&mut cap);
 
-    // cap.iter().for_each(|e| log::debug!("{e:x?}"));
-
     let bars: BTreeSet<u8> = cap
         .iter()
         .filter(|cap| cap.length > 0)
         .map(|cap| cap.bar)
         .collect();
-    let bar_addrs = allocate_bar_addrs(bars, device, mem)?;
+    let bar_addrs = super::allocate_bar_addrs(bars, device, mem)?;
 
     let config: Option<&CapData> = cap.iter().find(|e| e.typ == CapDataType::Common);
     let data = match config {
         Some(&data) => data,
         None => unreachable!(),
     };
-
-    // to quote osdev.wiki:
-    // > Before attempting to read the information about the BAR, make sure to disable both I/O and
-    // > memory decode in the command byte. /* ... */ This is needed as some devices are known to
-    // > decode the write of all ones to the register as an (unintended) access.
-    device.disable_io_space();
-    device.disable_mem_space();
-
-    device.enable_mem_space();
 
     let address = bar_addrs.get(&data.bar).ok_or(DriverError::OtherError(
         "address for bar has not been allocated",
@@ -63,35 +56,106 @@ fn init_pci(device: &Device, mem: &mut PciMemory) -> Result<VirtioPciCommonCfg, 
     Ok(config)
 }
 
-fn allocate_bar_addrs(
-    bars: BTreeSet<u8>,
-    device: &Device,
-    mem: &mut PciMemory,
-) -> Result<BTreeMap<u8, usize>, DriverError> {
-    let mut bar_addrs = BTreeMap::<u8, usize>::new();
-    for bar_nr in bars {
-        let (is_64_bits, size) = device.get_bar_size(bar_nr);
+struct VirtioPciCommonCfg {
+    inner: *mut VirtioPciCommonCfgRaw,
+}
 
-        let address = mem.allocate(size as usize, is_64_bits);
-        let address = address.ok_or(DriverError::OutOfMemoryPci)?;
-
-        bar_addrs.insert(bar_nr, address);
-
-        if is_64_bits {
-            let addr_hi = (address >> 32) as u32;
-            let addr_lo = address as u32;
-
-            assert_eq!(address, ((addr_hi as usize) << 32) | (addr_lo as usize));
-
-            device.write_bar(bar_nr + 1, addr_hi);
-            device.write_bar(bar_nr, addr_lo);
-        } else {
-            log::warn!("[VIRTIO] 32-bit memory address are not tested, but the device requests it");
-            device.write_bar(bar_nr, address as u32);
-        }
+impl VirtioPciCommonCfg {
+    pub unsafe fn from_raw(addr: usize) -> Self {
+        let inner = addr as *mut VirtioPciCommonCfgRaw;
+        Self { inner }
     }
 
-    Ok(bar_addrs)
+    // Page 59 of VirtIO spec v1.3
+    // STEPS 1-8 (except 7, and some parts of 4) are all setup here
+    // TODO:
+    // > If any of these steps go irrecoverably wrong, the driver SHOULD set the FAILED status bit to
+    // > indicate that it has given up on the device (it can reset the device later to restart if
+    // > desired). The driver MUST NOT continue initialisation in that case.
+    // > The driver MUST NOT send any buffer available notifications to the device before setting
+    // > DRIVER_OK
+    pub fn boot(&self) {
+        let inner = unsafe { &*self.inner };
+
+        // STEP 1
+        inner.device_status.set(DeviceStatus::RESET);
+
+        // STEP 2
+        inner.device_status.set(DeviceStatus::ACKNOWLEDGE);
+
+        // STEP 3
+        let status = inner.device_status.get();
+        inner.device_status.set(status | DeviceStatus::DRIVER);
+
+        // STEP 4
+        // we need to get 64 bits of device features here
+        inner.device_feature_select.set(0);
+        let device_feature_le = inner.device_feature.get();
+        inner.device_feature_select.set(1);
+        let device_feature_hi = inner.device_feature.get();
+
+        // log::debug!("VirtIO device features {device_feature_hi:#x} {device_feature_le:#x}");
+
+        inner.driver_feature_select.set(0);
+        inner.driver_feature.set(device_feature_le);
+        inner.driver_feature_select.set(1);
+        inner.driver_feature.set(device_feature_hi);
+
+        // STEP 5
+        let status = inner.device_status.get();
+        inner.device_status.set(status | DeviceStatus::FEATURES_OK);
+
+        // STEP 6
+        let status = inner.device_status.get();
+        assert!(status.contains(DeviceStatus::FEATURES_OK));
+
+        // STEP 7
+
+        // STEP 8
+        let status = inner.device_status.get();
+        inner.device_status.set(status | DeviceStatus::DRIVER_OK);
+    }
+}
+
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy)]
+    struct DeviceStatus: u8 {
+        const RESET = 0;
+        const ACKNOWLEDGE = 1;
+        const DRIVER = 2;
+        const FEATURES_OK = 8;
+        const DRIVER_OK = 4;
+        const DEVICE_NEEDS_RESET = 64;
+    }
+}
+
+#[repr(C)]
+#[derive(Debug)]
+struct VirtioPciCommonCfgRaw {
+    /* About the whole device. */
+    device_feature_select: RegCell<u32, RW>,
+    device_feature: RegCell<u32>,
+    driver_feature_select: RegCell<u32, RW>,
+    driver_feature: RegCell<u32, RW>,
+    config_msix_vector: RegCell<u16, RW>,
+    num_queues: RegCell<u16>,
+    device_status: RegCell<DeviceStatus, RW>,
+    config_generation: RegCell<u8>,
+
+    /* About a specific virtqueue. */
+    queue_select: RegCell<u16, RW>,
+    queue_msix_vector: RegCell<u16, RW>,
+    queue_enable: RegCell<u16, RW>,
+    queue_notify_off: RegCell<u16>,
+    queue_desc: RegCell<u64, RW>,
+    queue_driver: RegCell<u64, RW>,
+    queue_device: RegCell<u64, RW>,
+    queue_notif_config_data: RegCell<u16>,
+    queue_reset: RegCell<u16, RW>,
+
+    /* About the administration virtqueue. */
+    admin_queue_index: RegCell<u16>,
+    admin_queue_num: RegCell<u16>,
 }
 
 #[repr(u8)]
@@ -117,49 +181,4 @@ struct CapData {
     _padding: [u8; 2],
     offset: u32,
     length: u32,
-}
-
-struct VirtioPciCommonCfg {
-    inner: *mut VirtioPciCommonCfgRaw,
-}
-
-impl VirtioPciCommonCfg {
-    pub unsafe fn from_raw(addr: usize) -> Self {
-        let inner = addr as *mut VirtioPciCommonCfgRaw;
-        Self { inner }
-    }
-
-    pub fn boot(&self) {
-        let inner = unsafe { &*self.inner };
-        inner.device_feature_select.set(0xffffffff);
-    }
-}
-
-#[repr(C)]
-#[derive(Debug)]
-struct VirtioPciCommonCfgRaw {
-    /* About the whole device. */
-    device_feature_select: RegCell<u32, RW>,
-    device_feature: RegCell<u32>,
-    driver_feature_select: RegCell<u32, RW>,
-    driver_feature: RegCell<u32, RW>,
-    config_msix_vector: RegCell<u16, RW>,
-    num_queues: RegCell<u16>,
-    device_status: RegCell<u8, RW>,
-    config_generation: RegCell<u8>,
-
-    /* About a specific virtqueue. */
-    queue_select: RegCell<u16, RW>,
-    queue_msix_vector: RegCell<u16, RW>,
-    queue_enable: RegCell<u16, RW>,
-    queue_notify_off: RegCell<u16>,
-    queue_desc: RegCell<u64, RW>,
-    queue_driver: RegCell<u64, RW>,
-    queue_device: RegCell<u64, RW>,
-    queue_notif_config_data: RegCell<u16>,
-    queue_reset: RegCell<u16, RW>,
-
-    /* About the administration virtqueue. */
-    admin_queue_index: RegCell<u16>,
-    admin_queue_num: RegCell<u16>,
 }

@@ -67,12 +67,6 @@ impl VirtioPciCommonCfg {
 
     // Page 59 of VirtIO spec v1.3
     // STEPS 1-8 (except 7, and some parts of 4) are all setup here
-    // TODO:
-    // > If any of these steps go irrecoverably wrong, the driver SHOULD set the FAILED status bit to
-    // > indicate that it has given up on the device (it can reset the device later to restart if
-    // > desired). The driver MUST NOT continue initialisation in that case.
-    // > The driver MUST NOT send any buffer available notifications to the device before setting
-    // > DRIVER_OK
     pub fn boot(&self) -> Result<(), DriverError> {
         let inner = unsafe { &*self.inner };
 

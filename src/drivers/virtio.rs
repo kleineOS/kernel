@@ -43,10 +43,9 @@ fn init_pci(device: &Device, mem: &mut PciMemory) -> Result<VirtioPciCommonCfg, 
     let bar_addrs = super::allocate_bar_addrs(bars, device, mem)?;
 
     let config: Option<&CapData> = cap.iter().find(|e| e.typ == CapDataType::Common);
-    let data = match config {
-        Some(&data) => data,
-        None => unreachable!(),
-    };
+    let data = config.ok_or(DriverError::OtherError(
+        "CapData not found in device config",
+    ))?;
 
     let address = bar_addrs.get(&data.bar).ok_or(DriverError::OtherError(
         "address for bar has not been allocated",
@@ -74,7 +73,7 @@ impl VirtioPciCommonCfg {
     // > desired). The driver MUST NOT continue initialisation in that case.
     // > The driver MUST NOT send any buffer available notifications to the device before setting
     // > DRIVER_OK
-    pub fn boot(&self) {
+    pub fn boot(&self) -> Result<(), DriverError> {
         let inner = unsafe { &*self.inner };
 
         // STEP 1
@@ -107,13 +106,18 @@ impl VirtioPciCommonCfg {
 
         // STEP 6
         let status = inner.device_status.get();
-        assert!(status.contains(DeviceStatus::FEATURES_OK));
+        if !status.contains(DeviceStatus::FEATURES_OK) {
+            inner.device_status.set(status | DeviceStatus::FAILED);
+            return Err(DriverError::OtherError("device is not ok"));
+        }
 
-        // STEP 7
+        // TODO: STEP 7
 
         // STEP 8
         let status = inner.device_status.get();
         inner.device_status.set(status | DeviceStatus::DRIVER_OK);
+
+        Ok(())
     }
 }
 
@@ -123,9 +127,10 @@ bitflags::bitflags! {
         const RESET = 0;
         const ACKNOWLEDGE = 1;
         const DRIVER = 2;
-        const FEATURES_OK = 8;
         const DRIVER_OK = 4;
+        const FEATURES_OK = 8;
         const DEVICE_NEEDS_RESET = 64;
+        const FAILED = 128;
     }
 }
 

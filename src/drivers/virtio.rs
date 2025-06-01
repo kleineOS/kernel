@@ -21,14 +21,19 @@ pub fn init(device: Device, mem: &mut PciMemory) {
         }
     };
 
-    log::info!("[VIRTIO] driver init was a success!!");
-    config.boot();
+    if let Err(error) = config.boot() {
+        log::error!("[VIRTIO] driver init was a failure: {error}");
+        return;
+    }
+
     unsafe {
         log::info!(
             "[VIRTOO] VirtIO device is now ready for I/O operations {:#x?}",
             *config.inner
         )
     };
+
+    log::info!("[VIRTIO] driver init was a success!!");
 }
 
 fn init_pci(device: &Device, mem: &mut PciMemory) -> Result<VirtioPciCommonCfg, DriverError> {

@@ -45,6 +45,11 @@ I do not have any plans of extending architecture support. I am very inexperienc
 
 Contributions are welcome! Do keep in mind that this is an educational project for me, so I might end up asking too many questions about your code. Do not submit patches if you cannot explain it! If you want to find things to contribute, run `grep -rE  "TODO|HACK|FIXME" **/*/*.rs` in the root of this project.
 
+## TODO list
+This is the TODO for what I am working on right now.
+
+- [ ] VirtIO block driver spec from the PDF
+
 ---
 
 All code is licensed under the Apache-2.0 license

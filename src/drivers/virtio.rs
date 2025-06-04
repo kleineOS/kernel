@@ -36,15 +36,20 @@ pub fn init(device: Device, mem: &mut PciMemory) {
     log::info!("[VIRTIO] driver init was a success!!");
 }
 
+fn read_cap_data(cap: &[CapData]) -> Option<()> {
+    for cap in cap {
+        log::debug!("{cap:#x?}");
+    }
+
+    None
+}
+
 fn init_pci(device: &Device, mem: &mut PciMemory) -> Result<VirtioPciCommonCfg, DriverError> {
     let mut cap = Vec::<CapData>::new();
     device.get_capabilities::<CapData, Vec<CapData>>(&mut cap);
 
-    let bars: BTreeSet<u8> = cap
-        .iter()
-        .filter(|cap| cap.length > 0)
-        .map(|cap| cap.bar)
-        .collect();
+    let bars: BTreeSet<u8> = cap.iter().map(|cap| cap.bar).collect();
+    read_cap_data(&cap);
     let bar_addrs = super::allocate_bar_addrs(bars, device, mem)?;
 
     let config: Option<&CapData> = cap.iter().find(|e| e.typ == CapDataType::Common);
@@ -124,12 +129,12 @@ bitflags::bitflags! {
     #[derive(Debug, Clone, Copy)]
     struct DeviceStatus: u8 {
         const RESET = 0;
-        const ACKNOWLEDGE = 1;
-        const DRIVER = 2;
-        const DRIVER_OK = 4;
-        const FEATURES_OK = 8;
-        const DEVICE_NEEDS_RESET = 64;
-        const FAILED = 128;
+        const ACKNOWLEDGE = 1;  // bit: 0
+        const DRIVER = 2;       // bit: 1
+        const DRIVER_OK = 4;    // bit: 2
+        const FEATURES_OK = 8;  // bit: 3
+        const DEVICE_NEEDS_RESET = 64; // bit: 6
+        const FAILED = 128;     // bit: 7
     }
 }
 

@@ -1,6 +1,7 @@
 //! VirtIO General PCI driver
 //! current version: 0.2-dev
 
+use alloc::collections::BTreeMap;
 use alloc::collections::BTreeSet;
 use alloc::vec::Vec;
 
@@ -9,6 +10,7 @@ use super::regcell::*;
 use crate::systems::pci::{Device, PciMemory};
 
 pub const ID_PAIR: (u16, u16) = (0x1af4, 0x1001);
+const MAX_VIRTQUEUES: u16 = 10; // should be u16::MAX
 
 pub fn init(device: Device, mem: &mut PciMemory) {
     log::info!("[VIRTIO] initialising VirtIO PCI driver");
@@ -29,34 +31,89 @@ pub fn init(device: Device, mem: &mut PciMemory) {
     unsafe {
         log::info!(
             "[VIRTOO] VirtIO device is now ready for I/O operations {:#x?}",
-            *config.inner
+            *config.common_raw
         )
     };
 
     log::info!("[VIRTIO] driver init was a success!!");
 }
 
-fn read_cap_data(cap: &[CapData]) -> Option<()> {
+#[allow(unused)]
+#[derive(Debug)]
+struct Data {
+    common: CapData,
+    notify: CapData,
+    isr: CapData,
+    device: CapData,
+    pci: CapData,
+}
+
+macro_rules! require_cap {
+    ($cap:expr, $name:literal) => {
+        match $cap {
+            Some(cap) => *cap,
+            None => {
+                log::error!("Missing {} capability", $name);
+                return None;
+            }
+        }
+    };
+}
+
+fn read_cap_data(cap: &[CapData]) -> Option<Data> {
+    let mut common = None;
+    let mut notify = None;
+    let mut isr = None;
+    let mut device = None;
+    let mut pci = None;
+
     for cap in cap {
-        log::debug!("{cap:#x?}");
+        match cap.typ {
+            CapDataType::Common => common = Some(cap),
+            CapDataType::Notify => notify = Some(cap),
+            CapDataType::Isr => isr = Some(cap),
+            CapDataType::Device => device = Some(cap),
+            CapDataType::Pci => pci = Some(cap),
+            _ => {
+                core::hint::cold_path();
+                log::warn!("Unknown capability type for a VirtIO device: {:?}", cap.typ);
+                continue;
+            }
+        }
     }
 
-    None
+    let common = require_cap!(common, "common");
+    let notify = require_cap!(notify, "notify");
+    let isr = require_cap!(isr, "isr");
+    let device = require_cap!(device, "device");
+    let pci = require_cap!(pci, "pci");
+
+    Some(Data {
+        common,
+        notify,
+        isr,
+        device,
+        pci,
+    })
 }
 
 fn init_pci(device: &Device, mem: &mut PciMemory) -> Result<VirtioPciCommonCfg, DriverError> {
     let mut cap = Vec::<CapData>::new();
     device.get_capabilities::<CapData, Vec<CapData>>(&mut cap);
 
-    let bars: BTreeSet<u8> = cap.iter().map(|cap| cap.bar).collect();
-    read_cap_data(&cap);
-    let bar_addrs = super::allocate_bar_addrs(bars, device, mem)?;
-
-    let config: Option<&CapData> = cap.iter().find(|e| e.typ == CapDataType::Common);
-    let data = config.ok_or(DriverError::OtherError(
-        "CapData not found in device config",
+    let cap_data = read_cap_data(&cap).ok_or(DriverError::OtherError(
+        "Device capability list is incomplete",
     ))?;
 
+    let bars: BTreeSet<u8> = cap
+        .iter()
+        // bar 0 is going to be for PIO, so we skip it on RISCV TODO-ARCH-RISCV
+        .filter_map(|cap| if cap.bar > 0 { Some(cap.bar) } else { None })
+        .collect();
+
+    let bar_addrs = super::allocate_bar_addrs(bars, device, mem)?;
+
+    let data = cap_data.common;
     let address = bar_addrs.get(&data.bar).ok_or(DriverError::OtherError(
         "address for bar has not been allocated",
     ))?;
@@ -66,19 +123,19 @@ fn init_pci(device: &Device, mem: &mut PciMemory) -> Result<VirtioPciCommonCfg, 
 }
 
 struct VirtioPciCommonCfg {
-    inner: *mut VirtioPciCommonCfgRaw,
+    common_raw: *mut VirtioPciCommonCfgRaw,
 }
 
 impl VirtioPciCommonCfg {
     pub unsafe fn from_raw(addr: usize) -> Self {
         let inner = addr as *mut VirtioPciCommonCfgRaw;
-        Self { inner }
+        Self { common_raw: inner }
     }
 
     // Page 59 of VirtIO spec v1.3
     // STEPS 1-8 (except 7, and some parts of 4) are all setup here
     pub fn boot(&self) -> Result<(), DriverError> {
-        let inner = unsafe { &*self.inner };
+        let inner = unsafe { &*self.common_raw };
 
         // STEP 1
         inner.device_status.set(DeviceStatus::RESET);
@@ -116,12 +173,35 @@ impl VirtioPciCommonCfg {
         }
 
         // TODO: STEP 7
+        let _virtqueues = self.probe_virtqueues();
 
         // STEP 8
         let status = inner.device_status.get();
         inner.device_status.set(status | DeviceStatus::DRIVER_OK);
 
         Ok(())
+    }
+
+    fn probe_virtqueues(&self) -> BTreeMap<u16, u16> {
+        let inner = unsafe { &*self.common_raw };
+
+        let mut map = BTreeMap::new();
+
+        for queue in 0..MAX_VIRTQUEUES {
+            inner.queue_select.set(queue);
+            let size = inner.queue_size.get();
+
+            if size == 0 {
+                break;
+            }
+
+            map.insert(queue, size);
+        }
+
+        log::trace!("FOUND {} VIRTQUEUES IN THIS DEVICE", map.len());
+        log::trace!("{map:#x?}");
+
+        map
     }
 }
 
@@ -139,6 +219,14 @@ bitflags::bitflags! {
 }
 
 #[repr(C)]
+struct VirtQueueDesc {
+    addr: u64,
+    len: u64,
+    flags: u16,
+    next: u16,
+}
+
+#[repr(C)]
 #[derive(Debug)]
 struct VirtioPciCommonCfgRaw {
     /* About the whole device. */
@@ -153,6 +241,7 @@ struct VirtioPciCommonCfgRaw {
 
     /* About a specific virtqueue. */
     queue_select: RegCell<u16, RW>,
+    queue_size: RegCell<u16, RW>,
     queue_msix_vector: RegCell<u16, RW>,
     queue_enable: RegCell<u16, RW>,
     queue_notify_off: RegCell<u16>,

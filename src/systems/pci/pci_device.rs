@@ -55,13 +55,9 @@ impl Device {
 
         let pointer = self.ecam.read::<u8>(offset);
         let cap_ptr = if pointer != 0 { Some(pointer) } else { None };
-
         self.enum_capabilities(cap_ptr, list);
     }
 
-    /// # Returns
-    /// -> (is_64_bits, size)
-    /// TODO: create and use self.write_bar and self.read_bar
     pub fn get_bar_size(&self, bar_nr: u8) -> (bool, u32) {
         let original: u32 = self.read_bar(bar_nr);
 
@@ -87,7 +83,6 @@ impl Device {
     fn enum_capabilities<T, V: Extend<T>>(&self, ptr: Option<u8>, list: &mut V) {
         if let Some(ptr) = ptr {
             let cap = self.ecam.read::<super::Capabilities<T>>(ptr);
-
             list.extend(Some(cap.data));
 
             if cap.next_cap != 0 {

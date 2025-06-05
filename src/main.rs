@@ -1,6 +1,6 @@
 #![no_std]
 #![no_main]
-#![feature(custom_test_frameworks)]
+#![feature(custom_test_frameworks, cold_path)]
 #![test_runner(test_runner)]
 #![reexport_test_harness_main = "test_main"]
 

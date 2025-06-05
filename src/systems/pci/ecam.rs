@@ -9,6 +9,10 @@ pub struct EcamLocked {
 }
 
 impl EcamLocked {
+    // pub fn base_address(&self) -> usize {
+    //     self.ecam.address(self.bus, self.device, self.func, 0)
+    // }
+
     pub fn read<T>(&self, offset: u8) -> T {
         self.ecam.read(self.bus, self.device, self.func, offset)
     }

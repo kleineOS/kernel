@@ -9,8 +9,9 @@ use super::DriverError;
 use super::regcell::*;
 use crate::systems::pci::{Device, PciMemory};
 
+// ID_PAIR for a virtio block device, I will add more support once this is done
 pub const ID_PAIR: (u16, u16) = (0x1af4, 0x1001);
-const MAX_VIRTQUEUES: u16 = 10; // should be u16::MAX
+const MAX_VIRTQUEUES: u16 = u16::MAX;
 
 pub fn init(device: Device, mem: &mut PciMemory) {
     log::info!("[VIRTIO] initialising VirtIO PCI driver");
@@ -187,7 +188,7 @@ impl VirtioPciCommonCfg {
 
         let mut map = BTreeMap::new();
 
-        for queue in 0..MAX_VIRTQUEUES {
+        for queue in 0..=MAX_VIRTQUEUES {
             inner.queue_select.set(queue);
             let size = inner.queue_size.get();
 
@@ -199,7 +200,7 @@ impl VirtioPciCommonCfg {
         }
 
         log::trace!("FOUND {} VIRTQUEUES IN THIS DEVICE", map.len());
-        log::trace!("{map:#x?}");
+        log::trace!("{map:?}");
 
         map
     }

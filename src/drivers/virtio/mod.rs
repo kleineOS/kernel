@@ -1,11 +1,14 @@
 //! VirtIO General PCI driver
 //! current version: 0.2-dev
 
+mod block;
+
 use core::alloc::Layout;
 
 use alloc::collections::BTreeMap;
 use alloc::collections::BTreeSet;
 use alloc::vec::Vec;
+use block::BlkConfig;
 
 use super::DriverError;
 use super::regcell::*;
@@ -30,12 +33,12 @@ pub fn init(device: Device, mem: &mut PciMemory) {
         return;
     }
 
-    unsafe {
-        log::info!(
-            "[VIRTOO] VirtIO device is now ready for I/O operations {:#x?}",
-            *config.common_raw
-        )
-    };
+    // unsafe {
+    //     log::info!(
+    //         "[VIRTOO] VirtIO device is now ready for I/O operations {:#x?}",
+    //         *config.common_raw
+    //     )
+    // };
 
     log::info!("[VIRTIO] driver init was a success!!");
 }
@@ -124,34 +127,9 @@ fn init_pci(device: &Device, mem: &mut PciMemory) -> Result<VirtioPciCommonCfg, 
     // device data stuff
     let blk_cfg_data = cap_data.device;
     let blk_config = unsafe { BlkConfig::from_raw(address + blk_cfg_data.offset as usize) };
-    unsafe { log::info!("[VIRTIO] BLOCK DEVICE CONFIG: {:?}", *blk_config.inner) };
+    unsafe { log::info!("[VIRTIO] BLOCK DEVICE CONFIG: {:#x?}", *blk_config.inner) };
 
     Ok(config)
-}
-
-#[derive(Debug)]
-struct BlkConfig {
-    inner: *mut BlkConfigRaw,
-}
-
-impl BlkConfig {
-    unsafe fn from_raw(addr: usize) -> Self {
-        let inner = addr as *mut BlkConfigRaw;
-        Self { inner }
-    }
-}
-
-#[repr(C)]
-#[derive(Debug)]
-struct BlkConfigRaw {
-    capacity: u64,
-    size_max: u32,
-    seg_max: u32,
-    geom_cylinders: u16,
-    geom_heads: u8,
-    geom_sectors: u8,
-    blk_size: u32,
-    // more fields need to go here (might split it in a new file)
 }
 
 struct VirtioPciCommonCfg {

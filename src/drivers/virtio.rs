@@ -1,6 +1,8 @@
 //! VirtIO General PCI driver
 //! current version: 0.2-dev
 
+use core::alloc::Layout;
+
 use alloc::collections::BTreeMap;
 use alloc::collections::BTreeSet;
 use alloc::vec::Vec;
@@ -11,7 +13,6 @@ use crate::systems::pci::{Device, PciMemory};
 
 // ID_PAIR for a virtio block device, I will add more support once this is done
 pub const ID_PAIR: (u16, u16) = (0x1af4, 0x1001);
-const MAX_VIRTQUEUES: u16 = u16::MAX;
 
 pub fn init(device: Device, mem: &mut PciMemory) {
     log::info!("[VIRTIO] initialising VirtIO PCI driver");
@@ -29,12 +30,12 @@ pub fn init(device: Device, mem: &mut PciMemory) {
         return;
     }
 
-    unsafe {
-        log::info!(
-            "[VIRTOO] VirtIO device is now ready for I/O operations {:#x?}",
-            *config.common_raw
-        )
-    };
+    // unsafe {
+    //     log::info!(
+    //         "[VIRTOO] VirtIO device is now ready for I/O operations {:#x?}",
+    //         *config.common_raw
+    //     )
+    // };
 
     log::info!("[VIRTIO] driver init was a success!!");
 }
@@ -120,7 +121,36 @@ fn init_pci(device: &Device, mem: &mut PciMemory) -> Result<VirtioPciCommonCfg, 
     ))?;
     let config = unsafe { VirtioPciCommonCfg::from_raw(address + data.offset as usize) };
 
+    // device data stuff
+    let blk_cfg_data = cap_data.device;
+    let blk_config = unsafe { BlkConfig::from_raw(address + blk_cfg_data.offset as usize) };
+    unsafe { log::info!("[VIRTIO] BLOCK DEVICE CONFIG: {:?}", *blk_config.inner) };
+
     Ok(config)
+}
+
+#[derive(Debug)]
+struct BlkConfig {
+    inner: *mut BlkConfigRaw,
+}
+
+impl BlkConfig {
+    unsafe fn from_raw(addr: usize) -> Self {
+        let inner = addr as *mut BlkConfigRaw;
+        Self { inner }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug)]
+struct BlkConfigRaw {
+    capacity: u64,
+    size_max: u32,
+    seg_max: u32,
+    geom_cylinders: u16,
+    geom_heads: u8,
+    geom_sectors: u8,
+    blk_size: u32,
 }
 
 struct VirtioPciCommonCfg {
@@ -174,7 +204,9 @@ impl VirtioPciCommonCfg {
         }
 
         // TODO: STEP 7
-        let _virtqueues = self.probe_virtqueues();
+        let virtqueues = self.probe_virtqueues();
+        let q0_size = *virtqueues.get(&0).expect("queue 0 not found");
+        self.setup_q0(q0_size);
 
         // STEP 8
         let status = inner.device_status.get();
@@ -183,12 +215,23 @@ impl VirtioPciCommonCfg {
         Ok(())
     }
 
+    // requestq1
+    fn setup_q0(&self, size: u16) {
+        let size = size as usize;
+
+        let layout = Layout::from_size_align(size, size).unwrap();
+        let address = unsafe { alloc::alloc::alloc_zeroed(layout) };
+
+        // MARKER: this IS WHERE I AM AT
+    }
+
     fn probe_virtqueues(&self) -> BTreeMap<u16, u16> {
         let inner = unsafe { &*self.common_raw };
 
+        let max_virtqueues = inner.num_queues.get();
         let mut map = BTreeMap::new();
 
-        for queue in 0..=MAX_VIRTQUEUES {
+        for queue in 0..max_virtqueues {
             inner.queue_select.set(queue);
             let size = inner.queue_size.get();
 
@@ -199,8 +242,7 @@ impl VirtioPciCommonCfg {
             map.insert(queue, size);
         }
 
-        log::trace!("FOUND {} VIRTQUEUES IN THIS DEVICE", map.len());
-        log::trace!("{map:?}");
+        log::trace!("[VIRTIO] VIRTQUEUE:SIZE={map:?}");
 
         map
     }
@@ -217,14 +259,6 @@ bitflags::bitflags! {
         const DEVICE_NEEDS_RESET = 64; // bit: 6
         const FAILED = 128;     // bit: 7
     }
-}
-
-#[repr(C)]
-struct VirtQueueDesc {
-    addr: u64,
-    len: u64,
-    flags: u16,
-    next: u16,
 }
 
 #[repr(C)]

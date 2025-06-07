@@ -30,12 +30,12 @@ pub fn init(device: Device, mem: &mut PciMemory) {
         return;
     }
 
-    // unsafe {
-    //     log::info!(
-    //         "[VIRTOO] VirtIO device is now ready for I/O operations {:#x?}",
-    //         *config.common_raw
-    //     )
-    // };
+    unsafe {
+        log::info!(
+            "[VIRTOO] VirtIO device is now ready for I/O operations {:#x?}",
+            *config.common_raw
+        )
+    };
 
     log::info!("[VIRTIO] driver init was a success!!");
 }
@@ -151,6 +151,7 @@ struct BlkConfigRaw {
     geom_heads: u8,
     geom_sectors: u8,
     blk_size: u32,
+    // more fields need to go here (might split it in a new file)
 }
 
 struct VirtioPciCommonCfg {
@@ -217,12 +218,35 @@ impl VirtioPciCommonCfg {
 
     // requestq1
     fn setup_q0(&self, size: u16) {
+        let inner = unsafe { &*self.common_raw };
+        inner.queue_select.set(0);
+
         let size = size as usize;
 
-        let layout = Layout::from_size_align(size, size).unwrap();
-        let address = unsafe { alloc::alloc::alloc_zeroed(layout) };
+        // page 28 of virtio 1.3 pdf
+        let desc_table_address = unsafe {
+            let desc_table_size = 16 * size;
+            let desc_table_layout = Layout::from_size_align(desc_table_size, 16).unwrap();
+            alloc::alloc::alloc_zeroed(desc_table_layout)
+        };
 
-        // MARKER: this IS WHERE I AM AT
+        let avail_ring_address = unsafe {
+            let avail_ring_size = 6 + 2 * size;
+            let avail_ring_layout = Layout::from_size_align(avail_ring_size, 2).unwrap();
+            alloc::alloc::alloc_zeroed(avail_ring_layout)
+        };
+
+        let used_ring_address = unsafe {
+            let used_ring_size = 6 + 8 * size;
+            let used_ring_layout = Layout::from_size_align(used_ring_size, 4).unwrap();
+            alloc::alloc::alloc_zeroed(used_ring_layout)
+        };
+
+        inner.queue_desc.set(desc_table_address as u64);
+        inner.queue_driver.set(avail_ring_address as u64);
+        inner.queue_device.set(used_ring_address as u64);
+
+        inner.queue_enable.set(1);
     }
 
     fn probe_virtqueues(&self) -> BTreeMap<u16, u16> {

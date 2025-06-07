@@ -33,12 +33,12 @@ pub fn init(device: Device, mem: &mut PciMemory) {
         return;
     }
 
-    // unsafe {
-    //     log::info!(
-    //         "[VIRTOO] VirtIO device is now ready for I/O operations {:#x?}",
-    //         *config.common_raw
-    //     )
-    // };
+    unsafe {
+        log::info!(
+            "[VIRTOO] VirtIO device is now ready for I/O operations {:#x?}",
+            *config.common_raw
+        )
+    };
 
     log::info!("[VIRTIO] driver init was a success!!");
 }
@@ -126,8 +126,8 @@ fn init_pci(device: &Device, mem: &mut PciMemory) -> Result<VirtioPciCommonCfg, 
 
     // device data stuff
     let blk_cfg_data = cap_data.device;
-    let blk_config = unsafe { BlkConfig::from_raw(address + blk_cfg_data.offset as usize) };
-    unsafe { log::info!("[VIRTIO] BLOCK DEVICE CONFIG: {:#x?}", *blk_config.inner) };
+    let _blk_config = unsafe { BlkConfig::from_raw(address + blk_cfg_data.offset as usize) };
+    // unsafe { log::info!("[VIRTIO] BLOCK DEVICE CONFIG: {:#x?}", *blk_config.inner) };
 
     Ok(config)
 }

@@ -2,6 +2,7 @@ use crate::drivers::regcell::*;
 
 #[derive(Debug)]
 pub(super) struct BlkConfig {
+    #[allow(unused)]
     pub(super) inner: *mut BlkConfigRaw,
 }
 

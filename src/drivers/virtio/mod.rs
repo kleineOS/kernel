@@ -2,6 +2,7 @@
 //! current version: 0.2-dev
 
 mod block;
+mod virtqueue;
 
 use core::alloc::Layout;
 

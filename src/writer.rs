@@ -21,13 +21,38 @@ impl fmt::Write for Writer {
     }
 }
 
+impl WriterLogger {
+    const RESET: &str = "\x1b[0m";
+    const RED: &str = "\x1b[31m";
+    // const GREEN: &str = "\x1b[32m";
+    const YELLOW: &str = "\x1b[33m";
+    const BLUE: &str = "\x1b[34m";
+    const MAGENTA: &str = "\x1b[35m";
+    // const CYAN: &str = "\x1b[36m";
+    // const WHITE: &str = "\x1b[37m";
+}
+
 impl log::Log for WriterLogger {
     fn enabled(&self, _metadata: &log::Metadata) -> bool {
         true
     }
 
     fn log(&self, record: &log::Record) {
-        crate::println!("{}: {}", record.level(), record.args());
+        let colour = match record.level() {
+            log::Level::Error => Self::RED,
+            log::Level::Warn => Self::YELLOW,
+            log::Level::Info => "",
+            log::Level::Debug => Self::BLUE,
+            log::Level::Trace => Self::MAGENTA,
+        };
+
+        crate::println!(
+            "{}{}: {}{}",
+            colour,
+            record.level(),
+            record.args(),
+            Self::RESET
+        );
     }
 
     fn flush(&self) {

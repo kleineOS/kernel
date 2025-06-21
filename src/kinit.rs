@@ -19,14 +19,14 @@ pub fn pre_kinit(balloc: &mut BitMapAlloc, fdt: fdt::Fdt) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn kinit(_hartid: usize) -> ! {
+pub extern "C" fn kinit(hartid: usize) -> ! {
     // safety: cannot be used in critical section
     unsafe { riscv::interrupt::enable_all() };
     crate::trap::reset_timer();
 
     vmem::inithart();
 
-    // log::info!("[HART#{hartid}] Entering loop...");
+    log::trace!("[HART#{hartid}] Entering loop...");
     riscv::pauseloop();
 }
 

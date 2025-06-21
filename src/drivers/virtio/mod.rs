@@ -4,12 +4,11 @@
 mod block;
 mod virtqueue;
 
-use core::alloc::Layout;
-
 use alloc::collections::BTreeMap;
 use alloc::collections::BTreeSet;
 use alloc::vec::Vec;
 use block::BlkConfig;
+use virtqueue::VirtQueue;
 
 use super::DriverError;
 use super::regcell::*;
@@ -31,17 +30,7 @@ pub fn init(device: Device, mem: &mut PciMemory) {
 
     if let Err(error) = config.boot() {
         log::error!("[VIRTIO] driver init was a failure: {error}");
-        return;
     }
-
-    unsafe {
-        log::info!(
-            "[VIRTOO] VirtIO device is now ready for I/O operations {:#x?}",
-            *config.common_raw
-        )
-    };
-
-    log::info!("[VIRTIO] driver init was a success!!");
 }
 
 #[allow(unused)]
@@ -162,15 +151,24 @@ impl VirtioPciCommonCfg {
         // we need to get 64 bits of device features here
         inner.device_feature_select.set(0);
         let device_feature_le = inner.device_feature.get();
-        inner.device_feature_select.set(1);
-        let device_feature_hi = inner.device_feature.get();
+        let feats = BlockDevFeatures::from_bits_truncate(device_feature_le);
+        // log::info!(
+        //     "HELLO WORLD {:#x?}",
+        //     BlockDevFeatures::from_bits_truncate(device_feature_le)
+        // );
+        // inner.device_feature_select.set(1);
+        // let device_feature_hi = inner.device_feature.get();
+        // log::info!(
+        //     "HELLO WORLD {:#x?}",
+        //     BlockDevFeatures::from_bits_truncate(device_feature_hi)
+        // );
 
         // log::debug!("VirtIO device features {device_feature_hi:#x} {device_feature_le:#x}");
 
         inner.driver_feature_select.set(0);
-        inner.driver_feature.set(device_feature_le);
-        inner.driver_feature_select.set(1);
-        inner.driver_feature.set(device_feature_hi);
+        inner.driver_feature.set(feats.bits());
+        // inner.driver_feature_select.set(1);
+        // inner.driver_feature.set(device_feature_hi);
 
         // STEP 5
         let status = inner.device_status.get();
@@ -183,49 +181,15 @@ impl VirtioPciCommonCfg {
             return Err(DriverError::OtherError("device is not ok"));
         }
 
-        // TODO: STEP 7
+        // STEP 7
         let virtqueues = self.probe_virtqueues();
-        let q0_size = *virtqueues.get(&0).expect("queue 0 not found");
-        self.setup_q0(q0_size);
+        VirtQueue::init(virtqueues);
 
         // STEP 8
         let status = inner.device_status.get();
         inner.device_status.set(status | DeviceStatus::DRIVER_OK);
 
         Ok(())
-    }
-
-    // requestq1
-    fn setup_q0(&self, size: u16) {
-        let inner = unsafe { &*self.common_raw };
-        inner.queue_select.set(0);
-
-        let size = size as usize;
-
-        // page 28 of virtio 1.3 pdf
-        let desc_table_address = unsafe {
-            let desc_table_size = 16 * size;
-            let desc_table_layout = Layout::from_size_align(desc_table_size, 16).unwrap();
-            alloc::alloc::alloc_zeroed(desc_table_layout)
-        };
-
-        let avail_ring_address = unsafe {
-            let avail_ring_size = 6 + 2 * size;
-            let avail_ring_layout = Layout::from_size_align(avail_ring_size, 2).unwrap();
-            alloc::alloc::alloc_zeroed(avail_ring_layout)
-        };
-
-        let used_ring_address = unsafe {
-            let used_ring_size = 6 + 8 * size;
-            let used_ring_layout = Layout::from_size_align(used_ring_size, 4).unwrap();
-            alloc::alloc::alloc_zeroed(used_ring_layout)
-        };
-
-        inner.queue_desc.set(desc_table_address as u64);
-        inner.queue_driver.set(avail_ring_address as u64);
-        inner.queue_device.set(used_ring_address as u64);
-
-        inner.queue_enable.set(1);
     }
 
     fn probe_virtqueues(&self) -> BTreeMap<u16, u16> {
@@ -245,8 +209,6 @@ impl VirtioPciCommonCfg {
             map.insert(queue, size);
         }
 
-        log::trace!("[VIRTIO] VIRTQUEUE:SIZE={map:?}");
-
         map
     }
 }
@@ -261,6 +223,24 @@ bitflags::bitflags! {
         const FEATURES_OK = 8;  // bit: 3
         const DEVICE_NEEDS_RESET = 64; // bit: 6
         const FAILED = 128;     // bit: 7
+    }
+
+    #[derive(Debug)]
+    struct BlockDevFeatures: u32 {
+        const SIZE_MAX = 1 << 2;
+        const SEG_MAX = 1 << 3;
+        const GEOMETRY = 1 << 5;
+        const RO = 1 << 6;
+        const BLK_SIZE = 1 << 7;
+        const FLUSH = 1 << 10;
+        const TOPOLOGY = 1 << 11;
+        const CONFIG_WCE = 1 << 12;
+        const CONFIG_MQ = 1 << 13;
+        const DISCARD = 1 << 14;
+        const WRITE_ZEROES = 1 << 15;
+        const LIFETIME = 1 << 16;
+        const SECURE_ERASE = 1 << 17;
+        const ZONED = 1 << 18;
     }
 }
 

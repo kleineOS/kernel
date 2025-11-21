@@ -1,4 +1,4 @@
-name: Build the kernel
+name: Kernel CI
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@nightly
         with:
-          components: rust-src
+          components: rust-src, clippy
 
       # - name: Get just
       #   uses: taiki-e/install-action@just

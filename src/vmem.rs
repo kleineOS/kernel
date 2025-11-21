@@ -78,7 +78,7 @@ impl PTEntry {
     }
 }
 
-pub fn init(balloc: &mut BitMapAlloc) -> Mapper {
+pub fn init(balloc: &mut BitMapAlloc) -> Mapper<'_> {
     let tbl_addr = balloc.alloc(1);
     PAGE_TABLE.store(tbl_addr, Ordering::Relaxed);
 
@@ -95,7 +95,7 @@ fn map(
     perms: Perms,
     pages: usize,
 ) -> Result<(), MapError> {
-    assert!((vaddr & 4096) % 4096 == 0);
+    assert!((vaddr & 4096).is_multiple_of(4096));
     assert!(pages > 0);
 
     for i in 0..pages {

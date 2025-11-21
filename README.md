@@ -27,6 +27,11 @@ DEBUGGER := env("DEBUGGER", "rust-gdb")
 OBJDUMP := env("OBJDUMP", "riscv64-linux-gnu-objdump")
 ```
 
+You also need:
+- Nightly rust toolchain with rust-src
+    - `rustup default nightly` or any other way you see fit
+    - `rustup component add rust-src --toolchain nightly`
+
 Once everything is set, you can run the `cargo run` command. This should fetch all the dependencies, compile the code and run a QEMU virtual machine to execute the kernel. You should see some logs from OpenSBI before the first line of code in our OS is executed.
 
 ```sh

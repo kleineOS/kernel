@@ -32,7 +32,7 @@ impl BuddySystem {
     /// # Safety
     /// This is safe as long as the `addr` is valid
     pub unsafe fn init(base: usize) -> Result<Self, AllocatorError> {
-        if base % PAGE_SIZE != 0 {
+        if base.is_multiple_of(PAGE_SIZE) {
             return Err(AllocatorError::AddrNotAligned {
                 addr: base,
                 align: PAGE_SIZE,

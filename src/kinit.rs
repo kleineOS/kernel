@@ -14,7 +14,7 @@ pub fn pre_kinit(balloc: &mut BitMapAlloc, fdt: fdt::Fdt) {
         let addr = balloc.alloc(STACK_PAGES);
         // the address we are returned is at the top of the allocated space, we need to go lower
         let stack_bottom = addr + STACK_SIZE;
-        sbi::hsm::start(id, _start as usize, stack_bottom);
+        sbi::hsm::start(id, _start as *const () as usize, stack_bottom);
     }
 }
 
